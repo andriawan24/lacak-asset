@@ -2,6 +2,7 @@
     <id>id.andriawan.lacak-asset</id>
     <name>Lacak Asset</name>
     <vendor url="https://github.com/andriawan24">andriawan24</vendor>
+    <idea-version since-build="232"/>
 
     <description><![CDATA[
         Detect similar and duplicate drawable resources in Android projects.
