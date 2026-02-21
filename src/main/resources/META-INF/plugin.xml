@@ -1,0 +1,45 @@
+<idea-plugin>
+    <id>id.andriawan.lacak-asset</id>
+    <name>Lacak Asset</name>
+    <vendor url="https://github.com/andriawan24">andriawan24</vendor>
+
+    <description><![CDATA[
+        Detect similar and duplicate drawable resources in Android projects.
+        Compares images across formats (PNG, JPG, WebP, SVG, Android XML vector)
+        using perceptual hashing to find duplicates with configurable similarity threshold.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <resource-bundle>messages.MyMessageBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow id="Lacak Asset"
+                    anchor="bottom"
+                    factoryClass="id.andriawan.lacakasset.toolwindow.DuplicateDrawableToolWindowFactory"
+                    icon="AllIcons.Actions.Find"/>
+
+        <notificationGroup id="Lacak Asset" displayType="BALLOON"/>
+
+        <projectConfigurable
+                parentId="tools"
+                instance="id.andriawan.lacakasset.settings.DrawableAnalyzerConfigurable"
+                id="id.andriawan.lacakasset.settings"
+                displayName="Lacak Asset"
+                nonDefaultProject="true"/>
+
+        <vfs.asyncListener
+                implementation="id.andriawan.lacakasset.listener.DrawableFileChangeListener"/>
+    </extensions>
+
+    <actions>
+        <action id="LacakAsset.Scan"
+                class="id.andriawan.lacakasset.action.ScanDrawablesAction"
+                text="Scan Similar Drawables"
+                description="Scan project for similar drawable resources"
+                icon="AllIcons.Actions.Find">
+
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>
