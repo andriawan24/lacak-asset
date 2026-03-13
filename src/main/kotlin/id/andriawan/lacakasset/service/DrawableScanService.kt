@@ -5,8 +5,10 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.application.readAction
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import id.andriawan.lacakasset.engine.SimilarityEngine
+import id.andriawan.lacakasset.model.DrawableFormat
 import id.andriawan.lacakasset.model.SimilarityResult
 import id.andriawan.lacakasset.normalizer.DrawableNormalizer
 import id.andriawan.lacakasset.scanner.DrawableFileScanner
@@ -71,18 +73,18 @@ class DrawableScanService(
                 .filter { it.isNotEmpty() }
                 .toSet()
 
-            val allFiles = scanner.findDrawableFiles(project, excludedDirs)
+            val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
             if (allFiles.isEmpty()) return@withBackgroundProgress emptyList()
 
             val files = if (settings.state.includeXmlDrawables) {
                 allFiles
             } else {
-                allFiles.filter { it.format != id.andriawan.lacakasset.model.DrawableFormat.ANDROID_VECTOR }
+                allFiles.filter { it.format != DrawableFormat.ANDROID_VECTOR }
             }
 
             // Step 2: Hash all files
             val cacheService = DrawableHashCacheService.getInstance(project)
-            val hashedDrawables = normalizer.normalizeAndHash(files, project, cacheService, similarityEngine)
+            val hashedDrawables = readAction { normalizer.normalizeAndHash(files, project, cacheService, similarityEngine) }
 
             // Step 3: Find similar pairs
             val threshold = settings.state.similarityThreshold / 100.0
