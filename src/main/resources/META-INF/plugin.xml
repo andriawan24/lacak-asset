@@ -2,12 +2,12 @@
     <id>id.andriawan.lacak-asset</id>
     <name>Lacak Asset</name>
     <vendor url="https://github.com/andriawan24">andriawan24</vendor>
-    <idea-version since-build="232"/>
+    <idea-version since-build="232" until-build="253.*"/>
 
     <description><![CDATA[
         Detect similar and duplicate drawable resources in Android projects.
         Compares images across formats (PNG, JPG, WebP, SVG, Android XML vector)
-        using perceptual hashing to find duplicates with configurable similarity threshold.
+        using perceptual hashing to find duplicates with a configurable similarity threshold.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -18,7 +18,7 @@
         <toolWindow id="Lacak Asset"
                     anchor="bottom"
                     factoryClass="id.andriawan.lacakasset.toolwindow.DuplicateDrawableToolWindowFactory"
-                    icon="AllIcons.Actions.Find"/>
+                    icon="/META-INF/pluginIcon.svg"/>
 
         <notificationGroup id="Lacak Asset" displayType="BALLOON"/>
 

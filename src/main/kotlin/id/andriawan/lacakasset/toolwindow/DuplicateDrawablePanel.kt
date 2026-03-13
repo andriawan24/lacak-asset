@@ -42,8 +42,7 @@ class DuplicateDrawablePanel(
             if (scanAction != null) add(scanAction)
         }
 
-        val toolbar = ActionManager.getInstance()
-            .createActionToolbar("LacakAssetToolbar", actionGroup, true)
+        val toolbar = ActionManager.getInstance().createActionToolbar("LacakAssetToolbar", actionGroup, true)
         toolbar.targetComponent = this
         add(toolbar.component, BorderLayout.NORTH)
     }
@@ -102,6 +101,7 @@ class DuplicateDrawablePanel(
                         val modelRow = table.convertRowIndexToModel(row)
                         val result = tableModel.getResultAt(modelRow) ?: return
                         val file = if (col <= 2) result.fileA.virtualFile else result.fileB.virtualFile
+
                         FileEditorManager.getInstance(project).openFile(file, true)
                     }
                 }
