@@ -100,7 +100,8 @@ class DuplicateDrawablePanel(
                     if (row >= 0) {
                         val modelRow = table.convertRowIndexToModel(row)
                         val result = tableModel.getResultAt(modelRow) ?: return
-                        val file = if (col <= 2) result.fileA.virtualFile else result.fileB.virtualFile
+                        val modelCol = table.convertColumnIndexToModel(col)
+                        val file = if (modelCol == 1 || modelCol == 4) result.fileB.virtualFile else result.fileA.virtualFile
 
                         FileEditorManager.getInstance(project).openFile(file, true)
                     }
