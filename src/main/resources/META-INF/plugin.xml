@@ -26,7 +26,8 @@
                 parentId="tools"
                 instance="id.andriawan.lacakasset.settings.DrawableAnalyzerConfigurable"
                 id="id.andriawan.lacakasset.settings"
-                displayName="Lacak Asset"
+                key="configurable.id.andriawan.lacakasset.settings.displayName"
+                bundle="messages.MyMessageBundle"
                 nonDefaultProject="true"/>
 
         <vfs.asyncListener
@@ -34,13 +35,17 @@
     </extensions>
 
     <actions>
-        <action id="LacakAsset.Scan"
-                class="id.andriawan.lacakasset.action.ScanDrawablesAction"
-                text="Scan Similar Drawables"
-                description="Scan project for similar drawable resources"
-                icon="AllIcons.Actions.Find">
-
+        <group id="LacakAsset.Group" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="LacakAsset.Scan"
+                    class="id.andriawan.lacakasset.action.ScanDrawablesAction"
+                    icon="AllIcons.Actions.Find"/>
+        </group>
+
+        <action id="LacakAsset.FindSimilarDrawable"
+                class="id.andriawan.lacakasset.action.FindSimilarDrawableAction"
+                icon="AllIcons.Actions.Find">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>

@@ -85,6 +85,53 @@ class SimilarityEngine {
         return results.sortedByDescending { it.normalizedSimilarity }
     }
 
+    fun findSimilarToTarget(
+        target: HashedDrawable,
+        candidates: List<HashedDrawable>,
+        threshold: Double
+    ): List<SimilarityResult> {
+        val deduplicated = deduplicateDensityVariants(candidates)
+        val results = mutableListOf<SimilarityResult>()
+
+        for (candidate in deduplicated) {
+            if (candidate.file.virtualFile.path == target.file.virtualFile.path) continue
+
+            val result = when {
+                target.structuralFingerprint != null && candidate.structuralFingerprint != null -> {
+                    if (target.structuralFingerprint == candidate.structuralFingerprint) {
+                        SimilarityResult(
+                            fileA = target.file,
+                            fileB = candidate.file,
+                            similarityPercent = 100,
+                            normalizedSimilarity = 1.0
+                        )
+                    } else null
+                }
+
+                target.structuralFingerprint != null || candidate.structuralFingerprint != null -> null
+
+                else -> run {
+                    val dSimilarity = target.dHash.normalizedSimilarity(candidate.dHash)
+                    if (dSimilarity < DHASH_PRE_FILTER_THRESHOLD) return@run null
+
+                    val pSimilarity = target.pHash.normalizedSimilarity(candidate.pHash)
+                    if (pSimilarity < threshold) return@run null
+
+                    SimilarityResult(
+                        fileA = target.file,
+                        fileB = candidate.file,
+                        similarityPercent = (pSimilarity * 100).toInt(),
+                        normalizedSimilarity = pSimilarity
+                    )
+                }
+            }
+
+            if (result != null) results.add(result)
+        }
+
+        return results.sortedByDescending { it.normalizedSimilarity }
+    }
+
     private fun deduplicateDensityVariants(drawables: List<HashedDrawable>): List<HashedDrawable> {
         return drawables
             .groupBy { it.file.resourceName to it.file.modulePath }
