@@ -5,7 +5,7 @@ import javax.swing.table.AbstractTableModel
 
 class SimilarityTableModel : AbstractTableModel() {
 
-    private val columns = arrayOf("Image A", "Image B", "Similarity", "Module A", "Module B", "Savings")
+    private val columns = arrayOf("Image A", "Image B", "Similarity", "Source A", "Source B", "Savings")
     private val results = mutableListOf<SimilarityResult>()
 
     override fun getRowCount(): Int = results.size
@@ -18,11 +18,15 @@ class SimilarityTableModel : AbstractTableModel() {
             0 -> "${result.fileA.resourceName}.${result.fileA.format.extensions.first()}"
             1 -> "${result.fileB.resourceName}.${result.fileB.format.extensions.first()}"
             2 -> "${result.similarityPercent}%"
-            3 -> result.fileA.modulePath
-            4 -> result.fileB.modulePath
+            3 -> formatSource(result.fileA.modulePath, result.fileA.sourceSet, result.fileA.resourceOrigin.label)
+            4 -> formatSource(result.fileB.modulePath, result.fileB.sourceSet, result.fileB.resourceOrigin.label)
             5 -> formatFileSize(minOf(result.fileA.virtualFile.length, result.fileB.virtualFile.length))
             else -> ""
         }
+    }
+
+    private fun formatSource(modulePath: String, sourceSet: String, origin: String): String {
+        return "$modulePath ($sourceSet, $origin)"
     }
 
     private fun formatFileSize(bytes: Long): String = when {

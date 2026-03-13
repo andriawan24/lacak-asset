@@ -7,8 +7,15 @@ data class DrawableFile(
     val resourceName: String,
     val format: DrawableFormat,
     val densityQualifier: String,
-    val modulePath: String
+    val modulePath: String,
+    val sourceSet: String = "main",
+    val resourceOrigin: ResourceOrigin = ResourceOrigin.ANDROID_RES
 )
+
+enum class ResourceOrigin(val label: String) {
+    ANDROID_RES("Android Res"),
+    COMPOSE_RESOURCES("Compose Resources")
+}
 
 enum class DrawableFormat(val extensions: Set<String>) {
     PNG(setOf("png")),

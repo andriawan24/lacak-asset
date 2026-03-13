@@ -7,12 +7,27 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileVisitor
 import id.andriawan.lacakasset.model.DrawableFile
 import id.andriawan.lacakasset.model.DrawableFormat
+import id.andriawan.lacakasset.model.ResourceOrigin
 
 class DrawableFileScanner {
 
     companion object {
-        private val DRAWABLE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "svg", "xml")
+        val DRAWABLE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "svg", "xml")
         private val SKIP_DIRECTORIES = setOf("build", ".gradle", ".idea", ".git", "node_modules")
+
+        /**
+         * Checks if a file is inside a drawable directory.
+         * Supports both traditional Android (res/drawable*) and Compose Multiplatform (composeResources/drawable*).
+         */
+        fun isInDrawableDirectory(file: VirtualFile): Boolean {
+            val parent = file.parent ?: return false
+            val parentName = parent.name
+            if (parentName == "drawable" || parentName.startsWith("drawable-")) {
+                val grandparent = parent.parent ?: return false
+                return grandparent.name == "res" || grandparent.name == "composeResources"
+            }
+            return false
+        }
     }
 
     fun findDrawableFiles(project: Project, excludedDirs: Set<String> = emptySet()): List<DrawableFile> {
@@ -34,14 +49,16 @@ class DrawableFileScanner {
                 if (file.name.endsWith(".9.png")) return true
 
                 val format = DrawableFormat.fromExtension(extension) ?: return true
+                val origin = detectResourceOrigin(file)
 
-                // For XML files, only include vector drawables (checked later during normalization)
                 val drawableFile = DrawableFile(
                     virtualFile = file,
                     resourceName = extractResourceName(file),
                     format = format,
                     densityQualifier = extractDensityQualifier(file),
-                    modulePath = extractModulePath(project, file)
+                    modulePath = extractModulePath(project, file),
+                    sourceSet = extractSourceSet(project, file),
+                    resourceOrigin = origin
                 )
                 drawableFiles.add(drawableFile)
 
@@ -52,20 +69,20 @@ class DrawableFileScanner {
         return drawableFiles
     }
 
-    private fun isInDrawableDirectory(file: VirtualFile): Boolean {
-        val parent = file.parent ?: return false
-        val parentName = parent.name
-        if (parentName == "drawable" || parentName.startsWith("drawable-")) {
-            // Verify parent's parent is a "res" directory
-            val grandparent = parent.parent ?: return false
-            return grandparent.name == "res"
+    private fun isInDrawableDirectory(file: VirtualFile): Boolean =
+        Companion.isInDrawableDirectory(file)
+
+    private fun detectResourceOrigin(file: VirtualFile): ResourceOrigin {
+        val grandparent = file.parent?.parent ?: return ResourceOrigin.ANDROID_RES
+        return if (grandparent.name == "composeResources") {
+            ResourceOrigin.COMPOSE_RESOURCES
+        } else {
+            ResourceOrigin.ANDROID_RES
         }
-        return false
     }
 
     private fun extractResourceName(file: VirtualFile): String {
         val name = file.nameWithoutExtension
-        // Remove .9 suffix for nine-patch (shouldn't reach here, but defensive)
         return if (name.endsWith(".9")) name.removeSuffix(".9") else name
     }
 
@@ -78,19 +95,34 @@ class DrawableFileScanner {
         }
     }
 
+    private fun extractSourceSet(project: Project, file: VirtualFile): String {
+        val basePath = project.basePath ?: return "main"
+        val relativePath = file.path.removePrefix(basePath).trimStart('/')
+
+        // Pattern: <module>/src/<sourceSet>/res/... or <module>/src/<sourceSet>/composeResources/...
+        val srcIndex = relativePath.indexOf("/src/")
+        if (srcIndex >= 0) {
+            val afterSrc = relativePath.substring(srcIndex + 5) // skip "/src/"
+            val nextSlash = afterSrc.indexOf('/')
+            if (nextSlash > 0) {
+                return afterSrc.substring(0, nextSlash)
+            }
+        }
+
+        return "main"
+    }
+
     private fun extractModulePath(project: Project, file: VirtualFile): String {
         val basePath = project.basePath ?: return ""
         val filePath = file.path
         val relativePath = filePath.removePrefix(basePath).trimStart('/')
 
-        // Extract module path from relative path (e.g., "app/src/main/res/..." -> ":app")
         val srcIndex = relativePath.indexOf("/src/")
         if (srcIndex > 0) {
             val modulePart = relativePath.substring(0, srcIndex)
             return ":${modulePart.replace('/', ':')}"
         }
 
-        // If directly in project root's src
         return ":"
     }
 }
