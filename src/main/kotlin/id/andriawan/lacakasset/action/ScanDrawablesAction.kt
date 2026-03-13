@@ -16,8 +16,7 @@ class ScanDrawablesAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        e.presentation.isEnabled = project != null &&
-                !DrawableScanService.getInstance(project).isScanning
+        e.presentation.isEnabled = project != null && !DrawableScanService.getInstance(project).isScanning
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread {

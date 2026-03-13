@@ -2,12 +2,13 @@ package id.andriawan.lacakasset.normalizer
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.intellij.ui.Gray
+import com.intellij.ui.JBColor
 import id.andriawan.lacakasset.engine.SimilarityEngine
 import id.andriawan.lacakasset.model.DrawableFile
 import id.andriawan.lacakasset.model.DrawableFormat
 import id.andriawan.lacakasset.model.HashedDrawable
 import id.andriawan.lacakasset.service.DrawableHashCacheService
-import java.awt.Color
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import javax.imageio.ImageIO
@@ -95,10 +96,7 @@ class DrawableNormalizer {
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
         g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
-        // Mid-gray background so light-colored AND dark-colored icons are both visible.
-        // White background causes white/light icons on transparent to composite to all-white,
-        // producing a flat all-zero hash that matches every other blank image at 100%.
-        g2d.color = Color(128, 128, 128)
+        g2d.color = Gray._128
         g2d.fillRect(0, 0, HASH_RENDER_SIZE, HASH_RENDER_SIZE)
 
         // Scale to fit maintaining aspect ratio (letterbox)
@@ -122,7 +120,7 @@ class DrawableNormalizer {
         val g2d = thumb.createGraphics()
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
 
-        g2d.color = Color.WHITE
+        g2d.color = JBColor.WHITE
         g2d.fillRect(0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE)
 
         val scale = minOf(

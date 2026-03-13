@@ -4,6 +4,8 @@ import java.awt.RenderingHints
 import java.awt.color.ColorSpace
 import java.awt.image.BufferedImage
 import java.awt.image.ColorConvertOp
+import kotlin.math.cos
+import kotlin.math.sqrt
 
 /**
  * A compact perceptual hash stored as a LongArray.
@@ -118,7 +120,7 @@ object PHash {
             for (u in 0 until n) {
                 var sum = 0.0
                 for (x in 0 until n) {
-                    sum += input[y][x] * Math.cos((2.0 * x + 1) * u * Math.PI / (2.0 * n))
+                    sum += input[y][x] * cos((2.0 * x + 1) * u * Math.PI / (2.0 * n))
                 }
                 temp[y][u] = sum * alpha(u, n)
             }
@@ -128,7 +130,7 @@ object PHash {
             for (v in 0 until n) {
                 var sum = 0.0
                 for (y in 0 until n) {
-                    sum += temp[y][u] * Math.cos((2.0 * y + 1) * v * Math.PI / (2.0 * n))
+                    sum += temp[y][u] * cos((2.0 * y + 1) * v * Math.PI / (2.0 * n))
                 }
                 result[v][u] = sum * alpha(v, n)
             }
@@ -138,7 +140,7 @@ object PHash {
     }
 
     private fun alpha(u: Int, n: Int): Double {
-        return if (u == 0) Math.sqrt(1.0 / n) else Math.sqrt(2.0 / n)
+        return if (u == 0) sqrt(1.0 / n) else sqrt(2.0 / n)
     }
 }
 

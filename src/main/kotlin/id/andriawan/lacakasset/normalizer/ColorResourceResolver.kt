@@ -14,12 +14,8 @@ class ColorResourceResolver {
     fun resolve(project: Project, colorRef: String): String {
         if (!colorRef.startsWith("@color/")) return colorRef
         if (colorRef.startsWith("#")) return colorRef
-
         val colorName = colorRef.removePrefix("@color/")
-
         colorCache[colorName]?.let { return it }
-
-        // Search for colors.xml in the project
         loadColorsFromProject(project)
 
         return colorCache[colorName] ?: "#000000"

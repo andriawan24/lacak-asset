@@ -7,7 +7,7 @@ import id.andriawan.lacakasset.model.HashedDrawable
 import java.util.concurrent.ConcurrentHashMap
 
 @Service(Service.Level.PROJECT)
-class DrawableHashCacheService(private val project: Project) : Disposable {
+class DrawableHashCacheService : Disposable {
 
     private val cache = ConcurrentHashMap<String, HashedDrawable>()
 

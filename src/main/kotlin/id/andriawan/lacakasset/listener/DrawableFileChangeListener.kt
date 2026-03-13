@@ -10,23 +10,18 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
 import id.andriawan.lacakasset.service.DrawableHashCacheService
 
-class DrawableFileChangeListener : AsyncFileListener {
+private val DRAWABLE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "svg", "xml")
 
-    companion object {
-        private val DRAWABLE_EXTENSIONS = setOf("png", "jpg", "jpeg", "webp", "svg", "xml")
-    }
+class DrawableFileChangeListener : AsyncFileListener {
 
     override fun prepareChange(events: MutableList<out VFileEvent>): AsyncFileListener.ChangeApplier? {
         val relevantPaths = mutableListOf<String>()
 
         for (event in events) {
             if (!isRelevantEvent(event)) continue
-
             val file = event.file ?: continue
             val extension = file.extension?.lowercase() ?: continue
             if (extension !in DRAWABLE_EXTENSIONS) continue
-
-            // Check if in a drawable directory
             val parentName = file.parent?.name ?: continue
             if (parentName != "drawable" && !parentName.startsWith("drawable-")) continue
 

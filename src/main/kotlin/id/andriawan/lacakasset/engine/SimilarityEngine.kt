@@ -49,7 +49,6 @@ class SimilarityEngine {
                 val b = deduplicated[j]
 
                 val result = when {
-                    // Both aapt vectors: compare by structural fingerprint (code equality)
                     a.structuralFingerprint != null && b.structuralFingerprint != null -> {
                         if (a.structuralFingerprint == b.structuralFingerprint) {
                             SimilarityResult(
@@ -61,10 +60,8 @@ class SimilarityEngine {
                         } else null
                     }
 
-                    // Mixed (one aapt, one not): skip — incompatible comparison methods
                     a.structuralFingerprint != null || b.structuralFingerprint != null -> null
 
-                    // Both regular drawables: perceptual hashing
                     else -> run {
                         val dSimilarity = a.dHash.normalizedSimilarity(b.dHash)
                         if (dSimilarity < DHASH_PRE_FILTER_THRESHOLD) return@run null
