@@ -44,9 +44,4 @@ class SimilarityTableModel : AbstractTableModel() {
         results.addAll(newResults)
         fireTableDataChanged()
     }
-
-    fun clear() {
-        results.clear()
-        fireTableDataChanged()
-    }
 }

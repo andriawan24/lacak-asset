@@ -32,11 +32,6 @@ class DrawableHashCacheService(private val project: Project) : Disposable {
         hasChangedSinceLastScan = false
     }
 
-    fun clear() {
-        cache.clear()
-        hasChangedSinceLastScan = false
-    }
-
     override fun dispose() {
         cache.clear()
     }

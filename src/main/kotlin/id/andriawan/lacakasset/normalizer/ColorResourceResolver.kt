@@ -61,7 +61,4 @@ class ColorResourceResolver {
         }
     }
 
-    fun clear() {
-        colorCache.clear()
-    }
 }

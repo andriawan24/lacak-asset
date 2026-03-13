@@ -52,10 +52,6 @@ class DrawableFileScanner {
         return drawableFiles
     }
 
-    fun groupByResourceName(files: List<DrawableFile>): Map<String, List<DrawableFile>> {
-        return files.groupBy { it.resourceName }
-    }
-
     private fun isInDrawableDirectory(file: VirtualFile): Boolean {
         val parent = file.parent ?: return false
         val parentName = parent.name
