@@ -11,6 +11,8 @@ An IntelliJ IDEA plugin that detects similar and duplicate drawable resources in
 - Configurable similarity threshold (default: 90%)
 - Real-time detection via file change listener
 - Tool window with side-by-side image preview and similarity score table
+- Right-click context menu to find drawables similar to a selected file
+- Supports KMM and Compose Multiplatform drawable scanning
 
 ## Installation
 
@@ -26,9 +28,13 @@ Alternatively, build from source and install the plugin JAR manually via **Setti
 
 Go to **Tools → Scan Similar Drawables** or open the **Lacak Asset** tool window at the bottom of the IDE.
 
+### Find similar drawable
+
+Right-click any drawable file in the Project view and select **Find Similar Drawable** to find all drawables similar to the selected file.
+
 ### Tool window
 
-The tool window displays a table of similar drawable pairs with their similarity percentage. Clicking a row shows a side-by-side preview of the two images.
+The tool window displays a table of similar drawable pairs with their similarity percentage. Double-clicking a row opens the corresponding file in the editor.
 
 ### Configuration
 
@@ -63,9 +69,10 @@ To run the plugin in a sandboxed IDE instance:
 ./gradlew runIde
 ```
 
-## Requirements
+## Compatibility
 
-- IntelliJ IDEA 2025.2 or later
+- IntelliJ IDEA 2024.2+ / Android Studio Ladybug+
+- Automatically compatible with future IDE versions
 - JDK 21
 
 ## License
