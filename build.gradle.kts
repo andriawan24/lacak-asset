@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "id.andriawan"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -37,7 +37,8 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "252.25557"
+            sinceBuild = "242"
+            untilBuild = provider { null }
         }
 
         changeNotes = """
@@ -47,7 +48,6 @@ intellijPlatform {
 }
 
 tasks {
-    // Set the JVM compatibility versions
     withType<JavaCompile> {
         sourceCompatibility = "21"
         targetCompatibility = "21"
