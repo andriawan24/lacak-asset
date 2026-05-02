@@ -32,7 +32,7 @@ class DrawableNormalizer {
     ): HashedDrawable? {
         return try {
             // For ANDROID_VECTOR, reject non-vector XML (layouts, manifests, etc.)
-            if (file.format == DrawableFormat.ANDROID_VECTOR && !vectorConverter.isAaptVector(file.virtualFile)) {
+            if (file.format == DrawableFormat.ANDROID_VECTOR && !vectorConverter.isVectorDrawable(file.virtualFile)) {
                 return null
             }
 
@@ -76,9 +76,7 @@ class DrawableNormalizer {
 
                 val thumbImage = loadAsBufferedImage(file, project) ?: continue
 
-                val structuralFingerprint = if (file.format == DrawableFormat.ANDROID_VECTOR &&
-                    vectorConverter.isAaptVector(file.virtualFile)
-                ) {
+                val structuralFingerprint = if (file.format == DrawableFormat.ANDROID_VECTOR) {
                     vectorConverter.extractStructuralFingerprint(file.virtualFile)
                 } else null
 

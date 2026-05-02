@@ -126,11 +126,8 @@ class DrawableScanService(
             val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
             if (allFiles.isEmpty()) return@withBackgroundProgress emptyList()
 
-            val files = if (settings.state.includeXmlDrawables) {
-                allFiles
-            } else {
-                allFiles.filter { it.format != DrawableFormat.ANDROID_VECTOR }
-            }
+            val enabledFormats = settings.state.enabledFormats()
+            val files = allFiles.filter { it.format in enabledFormats }
 
             files.find { it.virtualFile.path == targetFile.path }
                 ?: return@withBackgroundProgress emptyList()
@@ -158,11 +155,8 @@ class DrawableScanService(
             val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
             if (allFiles.isEmpty()) return@withBackgroundProgress emptyList()
 
-            val files = if (settings.state.includeXmlDrawables) {
-                allFiles
-            } else {
-                allFiles.filter { it.format != DrawableFormat.ANDROID_VECTOR }
-            }
+            val enabledFormats = settings.state.enabledFormats()
+            val files = allFiles.filter { it.format in enabledFormats }
 
             // Step 2: Hash all files
             val cacheService = DrawableHashCacheService.getInstance(project)
@@ -218,11 +212,8 @@ class DrawableScanService(
                     if (candidates.isEmpty()) {
                         // Cold cache — scan project drawables first
                         val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
-                        val files = if (settings.state.includeXmlDrawables) {
-                            allFiles
-                        } else {
-                            allFiles.filter { it.format != DrawableFormat.ANDROID_VECTOR }
-                        }
+                        val enabledFormats = settings.state.enabledFormats()
+                        val files = allFiles.filter { it.format in enabledFormats }
                         // normalizeAndHash runs image I/O outside readAction intentionally
                         candidates = normalizer.normalizeAndHash(files, project, cacheService, similarityEngine)
                     }

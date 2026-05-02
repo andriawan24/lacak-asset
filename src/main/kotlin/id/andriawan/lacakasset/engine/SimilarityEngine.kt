@@ -48,35 +48,7 @@ class SimilarityEngine {
                 val a = deduplicated[i]
                 val b = deduplicated[j]
 
-                val result = when {
-                    a.structuralFingerprint != null && b.structuralFingerprint != null -> {
-                        if (a.structuralFingerprint == b.structuralFingerprint) {
-                            SimilarityResult(
-                                fileA = a.file,
-                                fileB = b.file,
-                                similarityPercent = 100,
-                                normalizedSimilarity = 1.0
-                            )
-                        } else null
-                    }
-
-                    a.structuralFingerprint != null || b.structuralFingerprint != null -> null
-
-                    else -> run {
-                        val dSimilarity = a.dHash.normalizedSimilarity(b.dHash)
-                        if (dSimilarity < DHASH_PRE_FILTER_THRESHOLD) return@run null
-
-                        val pSimilarity = a.pHash.normalizedSimilarity(b.pHash)
-                        if (pSimilarity < threshold) return@run null
-
-                        SimilarityResult(
-                            fileA = a.file,
-                            fileB = b.file,
-                            similarityPercent = (pSimilarity * 100).toInt(),
-                            normalizedSimilarity = pSimilarity
-                        )
-                    }
-                }
+                val result = computeSimilarity(a, b, threshold)
 
                 if (result != null) results.add(result)
             }
@@ -96,40 +68,40 @@ class SimilarityEngine {
         for (candidate in deduplicated) {
             if (candidate.file.virtualFile.path == target.file.virtualFile.path) continue
 
-            val result = when {
-                target.structuralFingerprint != null && candidate.structuralFingerprint != null -> {
-                    if (target.structuralFingerprint == candidate.structuralFingerprint) {
-                        SimilarityResult(
-                            fileA = target.file,
-                            fileB = candidate.file,
-                            similarityPercent = 100,
-                            normalizedSimilarity = 1.0
-                        )
-                    } else null
-                }
-
-                target.structuralFingerprint != null || candidate.structuralFingerprint != null -> null
-
-                else -> run {
-                    val dSimilarity = target.dHash.normalizedSimilarity(candidate.dHash)
-                    if (dSimilarity < DHASH_PRE_FILTER_THRESHOLD) return@run null
-
-                    val pSimilarity = target.pHash.normalizedSimilarity(candidate.pHash)
-                    if (pSimilarity < threshold) return@run null
-
-                    SimilarityResult(
-                        fileA = target.file,
-                        fileB = candidate.file,
-                        similarityPercent = (pSimilarity * 100).toInt(),
-                        normalizedSimilarity = pSimilarity
-                    )
-                }
-            }
+            val result = computeSimilarity(target, candidate, threshold)
 
             if (result != null) results.add(result)
         }
 
         return results.sortedByDescending { it.normalizedSimilarity }
+    }
+
+    private fun computeSimilarity(a: HashedDrawable, b: HashedDrawable, threshold: Double): SimilarityResult? {
+        // Exact structural match (same paths, same attributes) → 100%
+        if (a.structuralFingerprint != null && b.structuralFingerprint != null &&
+            a.structuralFingerprint == b.structuralFingerprint
+        ) {
+            return SimilarityResult(
+                fileA = a.file,
+                fileB = b.file,
+                similarityPercent = 100,
+                normalizedSimilarity = 1.0
+            )
+        }
+
+        // Fall through to perceptual hash for near-matches and cross-format comparisons
+        val dSimilarity = a.dHash.normalizedSimilarity(b.dHash)
+        if (dSimilarity < DHASH_PRE_FILTER_THRESHOLD) return null
+
+        val pSimilarity = a.pHash.normalizedSimilarity(b.pHash)
+        if (pSimilarity < threshold) return null
+
+        return SimilarityResult(
+            fileA = a.file,
+            fileB = b.file,
+            similarityPercent = (pSimilarity * 100).toInt(),
+            normalizedSimilarity = pSimilarity
+        )
     }
 
     private fun deduplicateDensityVariants(drawables: List<HashedDrawable>): List<HashedDrawable> {

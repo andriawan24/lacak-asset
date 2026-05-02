@@ -20,13 +20,31 @@ class DrawableAnalyzerConfigurable(project: Project) : BoundConfigurable("Lacak 
             }
 
             row {
-                checkBox("Include XML vector drawables")
-                    .bindSelected(settings.state::includeXmlDrawables)
-            }
-
-            row {
                 checkBox("Show outdated banner on file changes")
                     .bindSelected(settings.state::showOutdatedBanner)
+            }
+        }
+
+        group("File Types") {
+            row {
+                checkBox("PNG (.png)")
+                    .bindSelected(settings.state::includePng)
+            }
+            row {
+                checkBox("JPEG (.jpg, .jpeg)")
+                    .bindSelected(settings.state::includeJpg)
+            }
+            row {
+                checkBox("WebP (.webp)")
+                    .bindSelected(settings.state::includeWebp)
+            }
+            row {
+                checkBox("SVG (.svg)")
+                    .bindSelected(settings.state::includeSvg)
+            }
+            row {
+                checkBox("Android Vector Drawable (.xml)")
+                    .bindSelected(settings.state::includeAndroidVector)
             }
         }
 

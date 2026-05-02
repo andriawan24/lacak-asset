@@ -46,6 +46,18 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
         )
     }
 
+    /** Returns true if the XML root tag is `<vector>` (i.e. a valid Android vector drawable). */
+    fun isVectorDrawable(file: VirtualFile): Boolean {
+        return try {
+            val factory = DocumentBuilderFactory.newInstance()
+            factory.isNamespaceAware = true
+            val root = factory.newDocumentBuilder().parse(file.inputStream).documentElement
+            (root.localName ?: root.tagName) == "vector"
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     /** Returns true if the vector uses the aapt: namespace (inline gradients etc.). */
     fun isAaptVector(file: VirtualFile): Boolean {
         return try {
