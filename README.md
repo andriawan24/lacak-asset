@@ -2,6 +2,8 @@
 
 An IntelliJ IDEA plugin that detects similar and duplicate drawable resources in Android projects.
 
+<img width="1552" height="899" alt="Screenshot 2026-03-13 at 15 01 20" src="https://github.com/user-attachments/assets/0d027ef7-5aef-419e-bf7e-e8625253297f" />
+
 ## Features
 
 - Scans drawable resources across PNG, JPG, WebP, SVG, and Android XML vector formats
