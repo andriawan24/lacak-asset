@@ -7,13 +7,16 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import id.andriawan.lacakasset.engine.SimilarityEngine
+import id.andriawan.lacakasset.model.DrawableFile
 import id.andriawan.lacakasset.model.DrawableFormat
+import id.andriawan.lacakasset.model.DropScanResult
 import id.andriawan.lacakasset.model.SimilarityResult
 import id.andriawan.lacakasset.normalizer.DrawableNormalizer
 import id.andriawan.lacakasset.scanner.DrawableFileScanner
@@ -35,9 +38,11 @@ class DrawableScanService(
     private val similarityEngine = SimilarityEngine()
 
     private var scanJob: Job? = null
+    private var dropJob: Job? = null
     private val _results = CopyOnWriteArrayList<SimilarityResult>()
 
     val isScanning: Boolean get() = scanJob?.isActive == true
+    val isDropAnalysisRunning: Boolean get() = dropJob?.isActive == true
 
     var onScanStarted: (() -> Unit)? = null
     var onScanCompleted: ((List<SimilarityResult>) -> Unit)? = null
@@ -167,6 +172,79 @@ class DrawableScanService(
             val threshold = settings.state.similarityThreshold / 100.0
             similarityEngine.findSimilarPairs(hashedDrawables, threshold)
         }
+    }
+
+    fun scanDroppedFile(ioFile: java.io.File, callback: (DropScanResult) -> Unit): Job {
+        val job = cs.launch {
+            try {
+                withBackgroundProgress(project, "Checking similarity…") {
+                    val settings = DrawableAnalyzerSettings.getInstance(project)
+                    val excludedDirs = (settings.state.excludedDirectories ?: "")
+                        .split(",")
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .toSet()
+
+                    val vFile = readAction { LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile) }
+                    if (vFile == null) {
+                        withContext(Dispatchers.EDT) { callback(DropScanResult.Error("File no longer accessible")) }
+                        return@withBackgroundProgress
+                    }
+
+                    val format = DrawableFormat.fromExtension(ioFile.extension)
+                    if (format == null) {
+                        withContext(Dispatchers.EDT) { callback(DropScanResult.Error("Unsupported file format")) }
+                        return@withBackgroundProgress
+                    }
+
+                    val syntheticFile = DrawableFile(
+                        virtualFile = vFile,
+                        resourceName = ioFile.nameWithoutExtension,
+                        format = format,
+                        densityQualifier = "",
+                        modulePath = "(external)",
+                        sourceSet = "dropped"
+                    )
+
+                    val target = normalizer.normalizeExternalFile(syntheticFile, project, similarityEngine)
+                    if (target == null) {
+                        withContext(Dispatchers.EDT) { callback(DropScanResult.Error("Could not process file")) }
+                        return@withBackgroundProgress
+                    }
+
+                    val cacheService = DrawableHashCacheService.getInstance(project)
+                    var candidates = cacheService.getAllCached()
+
+                    if (candidates.isEmpty()) {
+                        // Cold cache — scan project drawables first
+                        val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
+                        val files = if (settings.state.includeXmlDrawables) {
+                            allFiles
+                        } else {
+                            allFiles.filter { it.format != DrawableFormat.ANDROID_VECTOR }
+                        }
+                        // normalizeAndHash runs image I/O outside readAction intentionally
+                        candidates = normalizer.normalizeAndHash(files, project, cacheService, similarityEngine)
+                    }
+
+                    val threshold = settings.state.similarityThreshold / 100.0
+                    val results = similarityEngine.findSimilarToTarget(target, candidates, threshold)
+
+                    withContext(Dispatchers.EDT) {
+                        callback(DropScanResult.Success(results, target.thumbnail))
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("Drop file scan failed", e)
+                withContext(Dispatchers.EDT) {
+                    callback(DropScanResult.Error(e.message ?: "Unknown error"))
+                }
+            }
+        }
+        dropJob = job
+        return job
     }
 
     private fun notifyScanComplete(count: Int) {

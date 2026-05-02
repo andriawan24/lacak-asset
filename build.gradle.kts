@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "id.andriawan"
-version = "1.0.1"
+version = "1.0.3"
 
 repositories {
     mavenCentral()
@@ -15,19 +15,13 @@ repositories {
 }
 
 dependencies {
-    // WebP support via TwelveMonkeys
     implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
-
-    // SVG rendering via Apache Batik
-    // Exclude xml-apis to prevent it from bundling javax.xml.parsers.* inside the plugin JAR,
-    // which would cause ClassCastException due to classloader conflicts with IntelliJ's loaders.
     implementation("org.apache.xmlgraphics:batik-transcoder:1.17") {
         exclude(group = "xml-apis", module = "xml-apis")
     }
     implementation("org.apache.xmlgraphics:batik-codec:1.17") {
         exclude(group = "xml-apis", module = "xml-apis")
     }
-
     intellijPlatform {
         intellijIdea("2025.2.4")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
@@ -42,7 +36,11 @@ intellijPlatform {
         }
 
         changeNotes = """
-            Initial version
+            1.0.3
+            - Add drag-and-drop similarity check (DropCheckDialog)
+            - Add CompareAsset action
+            - Improve DrawableScanService and DuplicateDrawablePanel
+            - Update Gradle wrapper
         """.trimIndent()
     }
 }

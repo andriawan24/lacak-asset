@@ -28,6 +28,8 @@ class DrawableHashCacheService : Disposable {
         hasChangedSinceLastScan = true
     }
 
+    fun getAllCached(): List<HashedDrawable> = cache.values.toList()
+
     fun clearChangedFlag() {
         hasChangedSinceLastScan = false
     }

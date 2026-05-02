@@ -35,11 +35,16 @@
     </extensions>
 
     <actions>
-        <group id="LacakAsset.Group" popup="true">
+        <group id="LacakAsset.Group" text="Lacak Asset" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <action id="LacakAsset.Scan"
                     class="id.andriawan.lacakasset.action.ScanDrawablesAction"
+                    text="Scan Drawables"
                     icon="AllIcons.Actions.Find"/>
+            <action id="LacakAsset.CompareAsset"
+                    class="id.andriawan.lacakasset.action.CompareAssetAction"
+                    text="Compare Asset"
+                    icon="AllIcons.Actions.Diff"/>
         </group>
 
         <action id="LacakAsset.FindSimilarDrawable"

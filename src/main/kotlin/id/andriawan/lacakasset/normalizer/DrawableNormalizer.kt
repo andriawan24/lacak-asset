@@ -25,6 +25,38 @@ class DrawableNormalizer {
     private val colorResolver = ColorResourceResolver()
     private val vectorConverter = AndroidVectorToSvgConverter(colorResolver)
 
+    fun normalizeExternalFile(
+        file: DrawableFile,
+        project: Project,
+        similarityEngine: SimilarityEngine
+    ): HashedDrawable? {
+        return try {
+            // For ANDROID_VECTOR, reject non-vector XML (layouts, manifests, etc.)
+            if (file.format == DrawableFormat.ANDROID_VECTOR && !vectorConverter.isAaptVector(file.virtualFile)) {
+                return null
+            }
+
+            val image = loadAsBufferedImage(file, project) ?: return null
+
+            val structuralFingerprint = if (file.format == DrawableFormat.ANDROID_VECTOR) {
+                vectorConverter.extractStructuralFingerprint(file.virtualFile)
+            } else null
+
+            val normalized = normalizeImage(image)
+            val thumbnail = createThumbnail(image)
+
+            val hashed = similarityEngine.computeHashes(file, normalized, thumbnail, structuralFingerprint)
+
+            image.flush()
+            normalized.flush()
+
+            hashed
+        } catch (e: Exception) {
+            log.warn("Failed to normalize external file: ${file.virtualFile.path}", e)
+            null
+        }
+    }
+
     fun normalizeAndHash(
         files: List<DrawableFile>,
         project: Project,
