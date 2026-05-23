@@ -17,10 +17,10 @@ class SimilarityTableModel : AbstractTableModel() {
         return when (columnIndex) {
             0 -> "${result.fileA.resourceName}.${result.fileA.format.extensions.first()}"
             1 -> "${result.fileB.resourceName}.${result.fileB.format.extensions.first()}"
-            2 -> "${result.similarityPercent}%"
+            2 -> result.similarityPercent
             3 -> formatSource(result.fileA.modulePath, result.fileA.sourceSet, result.fileA.resourceOrigin.label)
             4 -> formatSource(result.fileB.modulePath, result.fileB.sourceSet, result.fileB.resourceOrigin.label)
-            5 -> formatFileSize(minOf(result.fileA.virtualFile.length, result.fileB.virtualFile.length))
+            5 -> minOf(result.fileA.virtualFile.length, result.fileB.virtualFile.length)
             else -> ""
         }
     }
@@ -36,7 +36,16 @@ class SimilarityTableModel : AbstractTableModel() {
     }
 
     override fun getColumnClass(columnIndex: Int): Class<*> {
-        return String::class.java
+        return when (columnIndex) {
+            2 -> Int::class.javaObjectType
+            5 -> Long::class.javaObjectType
+            else -> String::class.java
+        }
+    }
+
+    fun formatSavings(row: Int): String {
+        val result = results[row]
+        return formatFileSize(minOf(result.fileA.virtualFile.length, result.fileB.virtualFile.length))
     }
 
     fun getResultAt(row: Int): SimilarityResult? {

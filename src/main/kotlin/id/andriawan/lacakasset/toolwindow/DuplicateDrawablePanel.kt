@@ -12,12 +12,15 @@ import com.intellij.ui.JBSplitter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import id.andriawan.lacakasset.model.DrawableFormat
 import id.andriawan.lacakasset.model.SimilarityResult
 import id.andriawan.lacakasset.service.DrawableHashCacheService
 import id.andriawan.lacakasset.service.DrawableScanService
 import kotlinx.coroutines.Job
 import java.awt.BorderLayout
+import java.awt.Component
 import java.awt.datatransfer.DataFlavor
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -25,6 +28,8 @@ import java.io.File
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import javax.swing.SwingConstants
+import javax.swing.JTable
+import javax.swing.table.DefaultTableCellRenderer
 
 class DuplicateDrawablePanel(
     private val project: Project
@@ -62,10 +67,16 @@ class DuplicateDrawablePanel(
         table.apply {
             setShowGrid(false)
             isStriped = true
-            emptyText.text = "Click 'Scan' to find similar drawables"
+            rowHeight = JBUI.scale(28)
+            emptyText.text = "Run Scan All Drawables to find duplicate resources"
             selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
             autoCreateRowSorter = true
+            toolTipText = "Double-click a row to open the selected drawable"
+            accessibleContext?.accessibleName = "Similar drawable pairs"
+            setDefaultRenderer(Int::class.javaObjectType, PercentCellRenderer())
+            setDefaultRenderer(Long::class.javaObjectType, SavingsCellRenderer(tableModel))
         }
+        setupTableColumns()
 
         val imageSplitter = JBSplitter(false, 0.5f).apply {
             firstComponent = leftPreview
@@ -73,8 +84,11 @@ class DuplicateDrawablePanel(
             splitterProportionKey = "LacakAsset.ImageSplitter"
         }
 
-        val previewPanel = JPanel(BorderLayout()).apply {
+        val previewPanel = JPanel(BorderLayout(JBUI.scale(8), JBUI.scale(8))).apply {
+            border = JBUI.Borders.empty(8, 8, 6, 8)
             add(imageSplitter, BorderLayout.CENTER)
+            statusLabel.border = JBUI.Borders.emptyTop(6)
+            statusLabel.foreground = UIUtil.getContextHelpForeground()
             add(statusLabel, BorderLayout.SOUTH)
         }
 
@@ -85,6 +99,21 @@ class DuplicateDrawablePanel(
         }
 
         add(mainSplitter, BorderLayout.CENTER)
+    }
+
+    private fun setupTableColumns() {
+        table.columnModel.getColumn(2).apply {
+            preferredWidth = JBUI.scale(88)
+            maxWidth = JBUI.scale(120)
+        }
+        table.columnModel.getColumn(5).apply {
+            preferredWidth = JBUI.scale(96)
+            maxWidth = JBUI.scale(128)
+        }
+        table.columnModel.getColumn(0).preferredWidth = JBUI.scale(180)
+        table.columnModel.getColumn(1).preferredWidth = JBUI.scale(180)
+        table.columnModel.getColumn(3).preferredWidth = JBUI.scale(220)
+        table.columnModel.getColumn(4).preferredWidth = JBUI.scale(220)
     }
 
     private fun setupListeners() {
@@ -137,13 +166,13 @@ class DuplicateDrawablePanel(
             DrawableHashCacheService.getInstance(project).clearChangedFlag()
 
             if (results.isEmpty()) {
-                table.emptyText.text = "No similar drawables found"
-                statusLabel.text = "Scan complete - no duplicates detected"
+                table.emptyText.text = "No similar drawables found at the current threshold"
+                statusLabel.text = "Scan complete. No cleanup needed."
             } else {
                 table.setRowSelectionInterval(0, 0)
                 val totalBytes = results.sumOf { minOf(it.fileA.virtualFile.length, it.fileB.virtualFile.length) }
                 val savings = formatFileSize(totalBytes)
-                statusLabel.text = "Found ${results.size} similar pairs · ~$savings potential savings"
+                statusLabel.text = "Found ${results.size} similar pairs - about $savings could be reviewed"
             }
         }
 
@@ -155,8 +184,9 @@ class DuplicateDrawablePanel(
 
         scanService.onScanError = { error ->
             table.setPaintBusy(false)
-            table.emptyText.text = "Scan failed: ${error.message}"
-            statusLabel.text = "Error: ${error.message}"
+            val message = error.message ?: "Unknown error"
+            table.emptyText.text = "Scan failed: $message"
+            statusLabel.text = "Scan failed. Check the IDE log for details."
         }
     }
 
@@ -278,5 +308,38 @@ class DuplicateDrawablePanel(
         dropJob = null
         dropDialog?.takeIf { !it.isDisposed }?.disposeIfNeeded()
         dropDialog = null
+    }
+
+    private class PercentCellRenderer : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            horizontalAlignment = SwingConstants.RIGHT
+            text = "${(value as? Number)?.toInt() ?: 0}%"
+            return this
+        }
+    }
+
+    private class SavingsCellRenderer(private val model: SimilarityTableModel) : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            horizontalAlignment = SwingConstants.RIGHT
+            val modelRow = table.convertRowIndexToModel(row)
+            text = model.formatSavings(modelRow)
+            return this
+        }
     }
 }

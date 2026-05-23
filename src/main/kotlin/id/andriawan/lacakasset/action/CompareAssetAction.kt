@@ -4,7 +4,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.fileChooser.FileChooser
-import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
+import com.intellij.openapi.fileChooser.FileChooserDescriptor
 import id.andriawan.lacakasset.model.DrawableFormat
 import id.andriawan.lacakasset.service.DrawableScanService
 import id.andriawan.lacakasset.toolwindow.DropCheckDialog
@@ -15,7 +15,14 @@ class CompareAssetAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
 
-        val descriptor = FileChooserDescriptorFactory.createSingleFileDescriptor()
+        val descriptor = FileChooserDescriptor(
+            true,
+            false,
+            false,
+            false,
+            false,
+            false
+        )
             .withTitle("Select Drawable to Compare")
             .withDescription("Choose a drawable file to find similar assets in this project")
 
@@ -40,7 +47,9 @@ class CompareAssetAction : AnAction() {
 
     override fun update(e: AnActionEvent) {
         val project = e.project
-        e.presentation.isEnabled = project != null
+        e.presentation.isEnabled = project != null &&
+                !DrawableScanService.getInstance(project).isScanning &&
+                !DrawableScanService.getInstance(project).isDropAnalysisRunning
     }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

@@ -2,103 +2,101 @@ package id.andriawan.lacakasset.toolwindow
 
 import com.intellij.ui.Gray
 import com.intellij.ui.JBColor
-import java.awt.*
+import com.intellij.ui.components.JBLabel
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import java.awt.BorderLayout
+import java.awt.Dimension
+import java.awt.Graphics
+import java.awt.Graphics2D
+import java.awt.Rectangle
+import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import javax.swing.JPanel
-import javax.swing.UIManager
+import javax.swing.SwingConstants
 
-class ImagePreviewPanel : JPanel() {
+class ImagePreviewPanel : JPanel(BorderLayout()) {
 
-    private var image: BufferedImage? = null
-    private var label: String = ""
+    private val canvas = ImageCanvas()
+    private val nameLabel = JBLabel("Select a result to preview", SwingConstants.CENTER).apply {
+        border = JBUI.Borders.empty(4, 6)
+        foreground = UIUtil.getContextHelpForeground()
+    }
 
     init {
-        preferredSize = Dimension(200, 200)
-        minimumSize = Dimension(100, 100)
+        preferredSize = JBUI.size(220, 180)
+        minimumSize = JBUI.size(80, 80)
+        background = UIUtil.getPanelBackground()
+        accessibleContext?.accessibleName = "Drawable preview"
+        add(canvas, BorderLayout.CENTER)
+        add(nameLabel, BorderLayout.SOUTH)
     }
 
     fun setPreview(img: BufferedImage?, fileName: String) {
-        image = img
-        label = fileName
-        repaint()
+        canvas.image = img
+        if (img == null) {
+            nameLabel.text = "Select a result to preview"
+            nameLabel.foreground = UIUtil.getContextHelpForeground()
+        } else {
+            nameLabel.text = fileName
+            nameLabel.toolTipText = fileName
+            nameLabel.foreground = UIUtil.getLabelForeground()
+        }
+        canvas.repaint()
     }
 
-    fun clearPreview() {
-        image = null
-        label = ""
-        repaint()
-    }
+    fun clearPreview() = setPreview(null, "")
 
-    override fun paintComponent(g: Graphics) {
-        super.paintComponent(g)
-        val g2 = g as Graphics2D
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-        g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+    private class ImageCanvas : JPanel() {
+        var image: BufferedImage? = null
+            set(value) {
+                field = value
+                repaint()
+            }
 
-        val img = image
-        if (img != null) {
-            val labelHeight = 24
-            val availableHeight = height - labelHeight
+        init {
+            isOpaque = true
+            background = UIUtil.getPanelBackground()
+            minimumSize = Dimension(1, 1)
+        }
+
+        override fun paintComponent(g: Graphics) {
+            super.paintComponent(g)
+            val img = image ?: return
+            if (width <= 0 || height <= 0) return
+
+            val g2 = g as Graphics2D
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
 
             val scale = minOf(
                 width.toDouble() / img.width,
-                availableHeight.toDouble() / img.height,
-                4.0 // Max 4x zoom for small icons
-            )
-            val drawWidth = (img.width * scale).toInt()
-            val drawHeight = (img.height * scale).toInt()
-            val x = (width - drawWidth) / 2
-            val y = (availableHeight - drawHeight) / 2
+                height.toDouble() / img.height,
+                4.0
+            ).coerceAtLeast(0.01)
+            val w = (img.width * scale).toInt().coerceAtLeast(1)
+            val h = (img.height * scale).toInt().coerceAtLeast(1)
+            val x = (width - w) / 2
+            val y = (height - h) / 2
 
-            // Draw a checkerboard pattern for transparency
-            drawCheckerboard(g2, x, y, drawWidth, drawHeight)
-
-            g2.drawImage(img, x, y, drawWidth, drawHeight, null)
-
-            // Draw label
-            g2.color = UIManager.getColor("Label.foreground") ?: JBColor.BLACK
-            g2.font = UIManager.getFont("Label.font") ?: Font("Dialog", Font.PLAIN, 12)
-            val fm = g2.fontMetrics
-            val labelText = if (fm.stringWidth(label) > width - 8) {
-                truncateWithEllipsis(label, fm, width - 8)
-            } else {
-                label
-            }
-            g2.drawString(labelText, (width - fm.stringWidth(labelText)) / 2, height - 6)
-        } else {
-            g2.color = UIManager.getColor("Label.disabledForeground") ?: JBColor.GRAY
-            g2.font = UIManager.getFont("Label.font") ?: Font("Dialog", Font.PLAIN, 12)
-            val msg = "No image selected"
-            val fm = g2.fontMetrics
-            g2.drawString(msg, (width - fm.stringWidth(msg)) / 2, height / 2)
+            drawCheckerboard(g2, x, y, w, h)
+            g2.drawImage(img, x, y, w, h, null)
         }
-    }
 
-    private fun drawCheckerboard(g2: Graphics2D, x: Int, y: Int, w: Int, h: Int) {
-        val checkSize = 8
-        val light = Gray._204
-        val dark = Gray._153
+        private fun drawCheckerboard(g2: Graphics2D, x: Int, y: Int, w: Int, h: Int) {
+            val checkSize = JBUI.scale(8)
+            val light = if (JBColor.isBright()) Gray._240 else Gray._80
+            val dark = if (JBColor.isBright()) Gray._210 else Gray._55
+            val oldClip = g2.clip
 
-        g2.clip = Rectangle(x, y, w, h)
-        for (row in 0..(h / checkSize)) {
-            for (col in 0..(w / checkSize)) {
-                g2.color = if ((row + col) % 2 == 0) light else dark
-                g2.fillRect(x + col * checkSize, y + row * checkSize, checkSize, checkSize)
+            g2.clip = Rectangle(x, y, w, h)
+            for (row in 0..(h / checkSize)) {
+                for (col in 0..(w / checkSize)) {
+                    g2.color = if ((row + col) % 2 == 0) light else dark
+                    g2.fillRect(x + col * checkSize, y + row * checkSize, checkSize, checkSize)
+                }
             }
+            g2.clip = oldClip
         }
-        g2.clip = null
-    }
-
-    private fun truncateWithEllipsis(text: String, fm: FontMetrics, maxWidth: Int): String {
-        val ellipsis = "..."
-        val ellipsisWidth = fm.stringWidth(ellipsis)
-        if (maxWidth <= ellipsisWidth) return ellipsis
-
-        for (i in text.length downTo 1) {
-            if (fm.stringWidth(text.substring(0, i)) + ellipsisWidth <= maxWidth) {
-                return text.substring(0, i) + ellipsis
-            }
-        }
-        return ellipsis
     }
 }

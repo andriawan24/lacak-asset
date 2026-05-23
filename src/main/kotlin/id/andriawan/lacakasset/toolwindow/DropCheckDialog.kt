@@ -6,6 +6,8 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import id.andriawan.lacakasset.model.DropScanResult
 import java.awt.*
 import java.awt.event.MouseAdapter
@@ -32,9 +34,10 @@ class DropCheckDialog(
     private val cardLayout = CardLayout()
     private val contentPanel = JPanel(cardLayout)
     private val errorLabel = JBLabel("", SwingConstants.CENTER)
+    private val summaryLabel = JBLabel("")
 
     init {
-        title = "Similarity Check"
+        title = "Check Similar Drawable"
         setCancelButtonText("Close")
         init()
     }
@@ -42,36 +45,42 @@ class DropCheckDialog(
     override fun createCenterPanel(): JPanel {
         setupTable()
 
-        // Header row: small thumbnail + filename
         val headerPanel = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
+            border = JBUI.Borders.emptyBottom(8)
+            fileNameLabel.toolTipText = fileNameLabel.text
             add(headerPreview)
-            add(javax.swing.Box.createHorizontalStrut(8))
+            add(javax.swing.Box.createHorizontalStrut(JBUI.scale(12)))
             add(fileNameLabel)
         }
 
-        // Loading card
-        val loadingPanel = JPanel(BorderLayout(0, 8)).apply {
+        val loadingPanel = JPanel(BorderLayout(0, JBUI.scale(8))).apply {
+            border = JBUI.Borders.empty(24, 16)
             add(JProgressBar().apply { isIndeterminate = true }, BorderLayout.NORTH)
-            add(JBLabel("Analysing…", SwingConstants.CENTER), BorderLayout.CENTER)
+            add(JBLabel("Checking project drawables...", SwingConstants.CENTER), BorderLayout.CENTER)
         }
 
-        // Results card
-        val tableScroll = JBScrollPane(table)
+        summaryLabel.foreground = UIUtil.getContextHelpForeground()
+        summaryLabel.border = JBUI.Borders.emptyBottom(6)
+        val resultsPanel = JPanel(BorderLayout()).apply {
+            add(summaryLabel, BorderLayout.NORTH)
+            add(JBScrollPane(table), BorderLayout.CENTER)
+        }
 
-        // Empty card
         val emptyPanel = JPanel(BorderLayout()).apply {
-            add(JBLabel("No similar drawables found.", SwingConstants.CENTER), BorderLayout.CENTER)
+            border = JBUI.Borders.empty(24, 16)
+            add(JBLabel("No similar drawables found at the current threshold.", SwingConstants.CENTER), BorderLayout.CENTER)
         }
 
-        // Error card
         val errorPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(24, 16)
+            errorLabel.foreground = UIUtil.getErrorForeground()
             add(errorLabel, BorderLayout.CENTER)
         }
 
         contentPanel.apply {
             add(loadingPanel, CARD_LOADING)
-            add(tableScroll, CARD_RESULTS)
+            add(resultsPanel, CARD_RESULTS)
             add(emptyPanel, CARD_EMPTY)
             add(errorPanel, CARD_ERROR)
         }
@@ -79,9 +88,11 @@ class DropCheckDialog(
 
         table.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
+                if (e.clickCount != 2) return
                 val row = table.rowAtPoint(e.point)
                 if (row >= 0) {
-                    val result = tableModel.getResultAt(row) ?: return
+                    val modelRow = table.convertRowIndexToModel(row)
+                    val result = tableModel.getResultAt(modelRow) ?: return
                     if (!project.isDisposed) {
                         FileEditorManager.getInstance(project).openFile(result.fileB.virtualFile, true)
                     }
@@ -89,9 +100,9 @@ class DropCheckDialog(
             }
         })
 
-        return JPanel(BorderLayout(0, 8)).apply {
-            border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
-            preferredSize = Dimension(640, 400)
+        return JPanel(BorderLayout(0, JBUI.scale(8))).apply {
+            border = JBUI.Borders.empty(10, 10, 10, 10)
+            preferredSize = JBUI.size(720, 440)
             add(headerPanel, BorderLayout.NORTH)
             add(contentPanel, BorderLayout.CENTER)
         }
@@ -102,14 +113,21 @@ class DropCheckDialog(
             setShowGrid(false)
             isStriped = true
             selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
-            rowHeight = 52
+            autoCreateRowSorter = true
+            rowHeight = JBUI.scale(52)
+            toolTipText = "Double-click a match to open it"
+            accessibleContext?.accessibleName = "Similar drawable matches"
             setDefaultRenderer(BufferedImage::class.java, ThumbnailCellRenderer())
+            setDefaultRenderer(Int::class.javaObjectType, PercentCellRenderer())
         }
-        // Fix thumbnail column width
         table.columnModel.getColumn(0).apply {
-            preferredWidth = 56
-            maxWidth = 56
-            minWidth = 56
+            preferredWidth = JBUI.scale(56)
+            maxWidth = JBUI.scale(56)
+            minWidth = JBUI.scale(56)
+        }
+        table.columnModel.getColumn(1).apply {
+            preferredWidth = JBUI.scale(88)
+            maxWidth = JBUI.scale(120)
         }
     }
 
@@ -125,6 +143,7 @@ class DropCheckDialog(
                     cardLayout.show(contentPanel, CARD_EMPTY)
                 } else {
                     tableModel.setResults(result.results)
+                    summaryLabel.text = "${result.results.size} matches found. Double-click a row to open the asset."
                     cardLayout.show(contentPanel, CARD_RESULTS)
                 }
             }
@@ -138,8 +157,10 @@ class DropCheckDialog(
 
     fun resetToLoading(newFileName: String) {
         fileNameLabel.text = newFileName
+        fileNameLabel.toolTipText = newFileName
         headerPreview.clearPreview()
         tableModel.setResults(emptyList())
+        summaryLabel.text = ""
         errorLabel.text = ""
         cardLayout.show(contentPanel, CARD_LOADING)
     }
@@ -170,6 +191,22 @@ class DropCheckDialog(
             val x = (width - w) / 2
             val y = (height - h) / 2
             g2d.drawImage(image, x, y, w, h, null)
+        }
+    }
+
+    private class PercentCellRenderer : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int
+        ): Component {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            horizontalAlignment = SwingConstants.RIGHT
+            text = "${(value as? Number)?.toInt() ?: 0}%"
+            return this
         }
     }
 

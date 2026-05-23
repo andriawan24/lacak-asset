@@ -16,14 +16,18 @@ class DropCheckTableModel(private val project: Project) : AbstractTableModel() {
     override fun getColumnName(column: Int): String = columns[column]
 
     override fun getColumnClass(columnIndex: Int): Class<*> {
-        return if (columnIndex == 0) BufferedImage::class.java else String::class.java
+        return when (columnIndex) {
+            0 -> BufferedImage::class.java
+            1 -> Int::class.javaObjectType
+            else -> String::class.java
+        }
     }
 
     override fun getValueAt(rowIndex: Int, columnIndex: Int): Any? {
         val result = results[rowIndex]
         return when (columnIndex) {
             0 -> DrawableHashCacheService.getInstance(project).getCached(result.fileB.virtualFile.path)?.thumbnail
-            1 -> "${result.similarityPercent}%"
+            1 -> result.similarityPercent
             2 -> "${result.fileB.resourceName}.${result.fileB.format.extensions.first()} (${result.fileB.modulePath})"
             else -> null
         }

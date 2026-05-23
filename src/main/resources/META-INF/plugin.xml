@@ -39,7 +39,7 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <action id="LacakAsset.Scan"
                     class="id.andriawan.lacakasset.action.ScanDrawablesAction"
-                    text="Check All Drawables"
+                    text="Scan All Drawables"
                     icon="AllIcons.Actions.Find"/>
 
             <action id="LacakAsset.CompareAsset"
