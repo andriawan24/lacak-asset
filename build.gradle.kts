@@ -1,7 +1,7 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "2.1.20"
-    id("org.jetbrains.intellij.platform") version "2.10.2"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.intellij.platform)
 }
 
 group = "id.andriawan"
@@ -15,15 +15,15 @@ repositories {
 }
 
 dependencies {
-    implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
-    implementation("org.apache.xmlgraphics:batik-transcoder:1.17") {
+    implementation(libs.imageio.webp)
+    implementation(libs.batik.transcoder) {
         exclude(group = "xml-apis", module = "xml-apis")
     }
-    implementation("org.apache.xmlgraphics:batik-codec:1.17") {
+    implementation(libs.batik.codec) {
         exclude(group = "xml-apis", module = "xml-apis")
     }
     intellijPlatform {
-        intellijIdea("2025.2.4")
+        intellijIdea(libs.versions.intellijIdea)
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 }
