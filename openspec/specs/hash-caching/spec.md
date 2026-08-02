@@ -8,9 +8,7 @@ on disk.
 
 Implemented by `service/DrawableHashCacheService.kt` and
 `listener/DrawableFileChangeListener.kt`.
-
 ## Requirements
-
 ### Requirement: Per-Project Cache
 
 The system SHALL maintain one hash cache per open project, keyed by absolute file
@@ -43,8 +41,10 @@ equals the file's current modification stamp, and SHALL recompute otherwise.
 
 The system SHALL invalidate the cached entry for a drawable when the virtual file
 system reports a create, delete, content-change, move, or copy event affecting a
-file with a supported drawable extension inside a `drawable` or `drawable-*`
-directory.
+file with a supported drawable extension inside a recognized drawable directory.
+The recognition rule SHALL be the same one used during discovery, so a
+`drawable` or `drawable-*` directory qualifies only when it sits directly under
+`res` or `composeResources`.
 
 #### Scenario: Drawable content changed on disk
 
@@ -56,20 +56,10 @@ directory.
 - **WHEN** a Kotlin source file is modified
 - **THEN** no cache entry is invalidated
 
-### Requirement: Stale-Results Flag
+#### Scenario: Drawable-named directory outside a resource root
 
-The system SHALL record that drawables have changed since the last completed
-scan, and SHALL clear that record when a scan completes.
-
-#### Scenario: Change after a completed scan
-
-- **WHEN** a scan has completed and a drawable is then modified
-- **THEN** the cache reports that a change has occurred since the last scan
-
-#### Scenario: Rescan clears the flag
-
-- **WHEN** a subsequent scan completes
-- **THEN** the change record is cleared
+- **WHEN** a PNG under an unrelated `assets/drawable/` directory is modified
+- **THEN** no cache entry is invalidated, because discovery never indexed that file
 
 ### Requirement: Cache Disposal
 
@@ -79,3 +69,4 @@ The system SHALL clear the cache when the project is disposed.
 
 - **WHEN** the project is closed
 - **THEN** all cached entries are released
+

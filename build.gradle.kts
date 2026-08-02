@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "id.andriawan"
-version = "1.0.3"
+version = "1.1.0"
 
 repositories {
     mavenCentral()
@@ -37,11 +37,14 @@ intellijPlatform {
         }
 
         changeNotes = """
-            1.0.3
-            - Add drag-and-drop similarity check (DropCheckDialog)
-            - Add CompareAsset action
-            - Improve DrawableScanService and DuplicateDrawablePanel
-            - Update Gradle wrapper
+            1.1.0
+            - Results are grouped: every copy of an asset is one row instead of one row per pair
+            - Delete redundant copies from the tool window via the IDE's Safe Delete refactoring
+            - Rebuilt tool window as a group list with per-copy previews and actions
+            - Live similarity slider plus module and format filters, with no rescan
+            - External file checks now open in the tool window instead of a separate dialog
+            - Results survive closing and reopening the tool window
+            - Image decoding no longer holds the read lock, and now runs in parallel
         """.trimIndent()
     }
 }

@@ -1,59 +1,4 @@
-# targeted-scan Specification
-
-## Purpose
-
-Let the user ask "what else in this project looks like this file?" directly from
-the Project view, without running and then visually filtering a full scan.
-
-Implemented by `action/FindSimilarDrawableAction.kt` and
-`DrawableScanService.scanSingleFile`.
-## Requirements
-### Requirement: Context Menu Availability
-
-The system SHALL show a "Find Similar Drawable" action in the Project view
-context menu only when the selected item is a non-directory file whose extension
-is a supported drawable extension and which resides in a recognized drawable
-directory.
-
-#### Scenario: Drawable selected
-
-- **WHEN** the user right-clicks `res/drawable/ic_home.png`
-- **THEN** the action is visible and enabled
-
-#### Scenario: Layout XML selected
-
-- **WHEN** the user right-clicks `res/layout/activity_main.xml`
-- **THEN** the action is hidden
-
-#### Scenario: Directory selected
-
-- **WHEN** the user right-clicks a directory
-- **THEN** the action is hidden
-
-#### Scenario: Source file selected
-
-- **WHEN** the user right-clicks a Kotlin source file
-- **THEN** the action is hidden
-
-### Requirement: Availability During Indexing
-
-The action SHALL remain available while the IDE is indexing, since its visibility
-decision depends only on file paths and extensions.
-
-#### Scenario: Right-click during indexing
-
-- **WHEN** the IDE is in dumb mode and the user right-clicks a drawable
-- **THEN** the action is still shown
-
-### Requirement: Disabled During an Active Scan
-
-The system SHALL disable the action while a scan is running, and SHALL ignore a
-targeted scan request received while a scan is already active.
-
-#### Scenario: Targeted scan requested mid-scan
-
-- **WHEN** a full scan is running and the user invokes the targeted action
-- **THEN** no targeted scan starts
+## MODIFIED Requirements
 
 ### Requirement: One-Against-All Comparison
 
@@ -104,4 +49,3 @@ that nothing similar was found.
 
 - **WHEN** the targeted drawable belongs to no cluster
 - **THEN** the tool window reports that nothing similar was found
-

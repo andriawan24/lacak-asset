@@ -7,9 +7,7 @@ affecting other projects.
 
 Implemented by `settings/DrawableAnalyzerSettings.kt` and
 `settings/DrawableAnalyzerConfigurable.kt`.
-
 ## Requirements
-
 ### Requirement: Settings Location
 
 The system SHALL expose a settings page named "Lacak Asset" under the Tools
@@ -33,18 +31,24 @@ shared through version control and do not leak between projects.
 ### Requirement: Similarity Threshold
 
 The system SHALL expose a similarity threshold as an integer percentage between
-50 and 100 inclusive, adjustable in steps of 5, defaulting to 90, and SHALL apply
-it as the minimum perceptual-hash similarity for reporting a pair.
+70 and 100 inclusive, adjustable in steps of 5, defaulting to 90, and SHALL apply
+it as the initial position of the tool window's threshold slider. Comparison
+itself SHALL retain pairs down to a fixed floor independent of this value.
 
 #### Scenario: Default threshold
 
 - **WHEN** a project has never configured the threshold
-- **THEN** scans run at 90%
+- **THEN** the tool window's slider starts at 90%
 
 #### Scenario: Threshold lowered
 
-- **WHEN** the user sets the threshold to 75 and runs a scan
-- **THEN** pairs at 75% and above are reported
+- **WHEN** the user sets the threshold to 75 and opens the tool window
+- **THEN** the slider starts at 75% and clusters are formed from pairs at 75% and above
+
+#### Scenario: Slider does not write back
+
+- **WHEN** the user moves the tool window slider
+- **THEN** the stored configuration value is unchanged
 
 ### Requirement: Per-Format Toggles
 
@@ -79,13 +83,3 @@ an empty list.
 - **WHEN** the field is empty
 - **THEN** only the built-in skip list applies
 
-### Requirement: Modification Tracking
-
-The settings page SHALL report itself as modified when any field differs from the
-stored state, and SHALL restore the stored values on reset.
-
-#### Scenario: Field edited then reset
-
-- **WHEN** the user edits the excluded directories field and then resets
-- **THEN** the field returns to the stored value
-- **AND** the page reports itself as unmodified
