@@ -2,30 +2,41 @@ package id.andriawan.lacakasset.service
 
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.readAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.application.EDT
-import com.intellij.openapi.application.readAction
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.platform.ide.progress.withBackgroundProgress
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import id.andriawan.lacakasset.engine.SimilarityEngine
 import id.andriawan.lacakasset.model.DrawableFile
 import id.andriawan.lacakasset.model.DrawableFormat
-import id.andriawan.lacakasset.model.DropScanResult
+import id.andriawan.lacakasset.model.DrawableCluster
+import id.andriawan.lacakasset.model.ExternalCheckResult
+import id.andriawan.lacakasset.model.HashedDrawable
+import id.andriawan.lacakasset.model.ScanState
 import id.andriawan.lacakasset.model.SimilarityResult
-import id.andriawan.lacakasset.normalizer.DrawableNormalizer
-import id.andriawan.lacakasset.scanner.DrawableFileScanner
 import id.andriawan.lacakasset.settings.DrawableAnalyzerSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.coroutines.withContext
+import java.io.File
 
+/**
+ * Owns drawable analysis for one project and publishes its state.
+ *
+ * Every entry point runs the same [ScanPipeline]; they differ only in what they pass to it
+ * and which part of the result they present. State is exposed as a [StateFlow] with a
+ * retained current value, so a tool window opened after a scan finished renders the
+ * existing results instead of an empty panel.
+ */
 @Service(Service.Level.PROJECT)
 class DrawableScanService(
     private val project: Project,
@@ -33,166 +44,102 @@ class DrawableScanService(
 ) {
     private val log = Logger.getInstance(DrawableScanService::class.java)
 
-    private val scanner = DrawableFileScanner()
-    private val normalizer = DrawableNormalizer()
-    private val similarityEngine = SimilarityEngine()
+    private val pipeline = ScanPipeline(project)
+
+    private val _state = MutableStateFlow<ScanState>(ScanState.Idle)
+    val state: StateFlow<ScanState> = _state.asStateFlow()
 
     private var scanJob: Job? = null
     private var dropJob: Job? = null
-    private val _results = CopyOnWriteArrayList<SimilarityResult>()
 
     val isScanning: Boolean get() = scanJob?.isActive == true
     val isDropAnalysisRunning: Boolean get() = dropJob?.isActive == true
 
-    var onScanStarted: (() -> Unit)? = null
-    var onScanCompleted: ((List<SimilarityResult>) -> Unit)? = null
-    var onScanCancelled: ((List<SimilarityResult>) -> Unit)? = null
-    var onScanError: ((Throwable) -> Unit)? = null
+    /** Emitted when a targeted scan finishes, so the panel can focus the target's results. */
+    var onTargetedScanCompleted: ((VirtualFile) -> Unit)? = null
 
     fun startScan() {
         if (isScanning) return
 
         scanJob = cs.launch {
-            try {
-                onScanStarted?.invoke()
-                val scanResults = performScan()
-                _results.clear()
-                _results.addAll(scanResults)
-                onScanCompleted?.invoke(scanResults)
-                notifyScanComplete(scanResults.size)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                onScanCancelled?.invoke(_results.toList())
-                throw e
-            } catch (e: Exception) {
-                log.error("Drawable scan failed", e)
-                onScanError?.invoke(e)
-            }
+            runScan { pairs -> pairs }
         }
     }
 
+    /**
+     * Runs the same scan as [startScan]; the caller narrows the presentation to the target.
+     * The whole project is still hashed, because matching the target requires every
+     * candidate's hash — the cache makes repeat runs cheap.
+     */
     fun scanSingleFile(targetFile: VirtualFile) {
         if (isScanning) return
 
         scanJob = cs.launch {
-            try {
-                onScanStarted?.invoke()
-                val scanResults = performSingleFileScan(targetFile)
-                _results.clear()
-                _results.addAll(scanResults)
-                onScanCompleted?.invoke(scanResults)
-
-                withContext(Dispatchers.EDT) {
-                    val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Lacak Asset")
-                    if (toolWindow != null) {
-                        toolWindow.show {
-                            val ideFrame = toolWindow.component.rootPane
-                            if (ideFrame != null) {
-                                val targetHeight = ideFrame.height / 4
-                                val currentHeight = toolWindow.component.height
-                                if (currentHeight < targetHeight) {
-                                    @Suppress("UnstableApiUsage")
-                                    (toolWindow as? com.intellij.openapi.wm.ex.ToolWindowEx)
-                                        ?.stretchHeight(targetHeight - currentHeight)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                notifyScanComplete(scanResults.size)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                onScanCancelled?.invoke(_results.toList())
-                throw e
-            } catch (e: Exception) {
-                log.error("Single file drawable scan failed", e)
-                onScanError?.invoke(e)
+            val completed = runScan { pairs -> pairs }
+            if (completed) {
+                withContext(Dispatchers.EDT) { onTargetedScanCompleted?.invoke(targetFile) }
             }
         }
     }
 
-    fun cancelScan() {
-        scanJob?.cancel()
-    }
+    /**
+     * Runs the pipeline and publishes the outcome.
+     * Returns true when the scan completed normally.
+     */
+    private suspend fun runScan(transform: (List<SimilarityResult>) -> List<SimilarityResult>): Boolean {
+        return try {
+            val hashed = withBackgroundProgress(project, "Scanning drawable resources...") {
+                val files = pipeline.discover()
+                if (files.isEmpty()) {
+                    emptyList()
+                } else {
+                    _state.value = ScanState.Scanning(0, files.size)
+                    pipeline.hashAll(files) { processed, total ->
+                        _state.value = ScanState.Scanning(processed, total)
+                    }
+                }
+            }
 
-    private suspend fun performSingleFileScan(targetFile: VirtualFile): List<SimilarityResult> {
-        return withBackgroundProgress(project, "Finding similar drawables...") {
-            val settings = DrawableAnalyzerSettings.getInstance(project)
-            val excludedDirs = (settings.state.excludedDirectories ?: "")
-                .split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .toSet()
-
-            val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
-            if (allFiles.isEmpty()) return@withBackgroundProgress emptyList()
-
-            val enabledFormats = settings.state.enabledFormats()
-            val files = allFiles.filter { it.format in enabledFormats }
-
-            files.find { it.virtualFile.path == targetFile.path }
-                ?: return@withBackgroundProgress emptyList()
-
-            val cacheService = DrawableHashCacheService.getInstance(project)
-            val hashedDrawables = readAction { normalizer.normalizeAndHash(files, project, cacheService, similarityEngine) }
-
-            val hashedTarget = hashedDrawables.find { it.file.virtualFile.path == targetFile.path }
-                ?: return@withBackgroundProgress emptyList()
-
-            val threshold = settings.state.similarityThreshold / 100.0
-            similarityEngine.findSimilarToTarget(hashedTarget, hashedDrawables, threshold)
+            val result = transform(pipeline.compareAll(hashed))
+            _state.value = ScanState.Ready(result, hashed.associateBy { it.file.path })
+            notifyScanComplete(countAtDisplayedThreshold(result))
+            true
+        } catch (e: CancellationException) {
+            _state.value = ScanState.Idle
+            throw e
+        } catch (e: Exception) {
+            log.error("Drawable scan failed", e)
+            _state.value = ScanState.Failed(e.message ?: "Unknown error")
+            false
         }
     }
 
-    private suspend fun performScan(): List<SimilarityResult> {
-        return withBackgroundProgress(project, "Scanning drawable resources...") {
-            val settings = DrawableAnalyzerSettings.getInstance(project)
-            val excludedDirs = (settings.state.excludedDirectories ?: "")
-                .split(",")
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .toSet()
-
-            val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
-            if (allFiles.isEmpty()) return@withBackgroundProgress emptyList()
-
-            val enabledFormats = settings.state.enabledFormats()
-            val files = allFiles.filter { it.format in enabledFormats }
-
-            // Step 2: Hash all files
-            val cacheService = DrawableHashCacheService.getInstance(project)
-            val hashedDrawables = readAction { normalizer.normalizeAndHash(files, project, cacheService, similarityEngine) }
-
-            // Step 3: Find similar pairs
-            val threshold = settings.state.similarityThreshold / 100.0
-            similarityEngine.findSimilarPairs(hashedDrawables, threshold)
-        }
-    }
-
-    fun scanDroppedFile(ioFile: java.io.File, callback: (DropScanResult) -> Unit): Job {
+    /**
+     * Analyses a file that may not belong to the project, returning it and its matches as one
+     * cluster. The candidate is never cached and never written to.
+     */
+    fun checkExternalFile(ioFile: File, callback: (ExternalCheckResult) -> Unit): Job {
         val job = cs.launch {
             try {
                 withBackgroundProgress(project, "Checking similarity…") {
-                    val settings = DrawableAnalyzerSettings.getInstance(project)
-                    val excludedDirs = (settings.state.excludedDirectories ?: "")
-                        .split(",")
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-                        .toSet()
-
-                    val vFile = readAction { LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile) }
-                    if (vFile == null) {
-                        withContext(Dispatchers.EDT) { callback(DropScanResult.Error("File no longer accessible")) }
+                    val virtualFile = readAction {
+                        LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile)
+                    }
+                    if (virtualFile == null) {
+                        deliver(callback, ExternalCheckResult.Error("File no longer accessible"))
                         return@withBackgroundProgress
                     }
 
                     val format = DrawableFormat.fromExtension(ioFile.extension)
                     if (format == null) {
-                        withContext(Dispatchers.EDT) { callback(DropScanResult.Error("Unsupported file format")) }
+                        deliver(callback, ExternalCheckResult.Error("Unsupported file format"))
                         return@withBackgroundProgress
                     }
 
-                    val syntheticFile = DrawableFile(
-                        virtualFile = vFile,
+                    val candidate = DrawableFile(
+                        virtualFile = virtualFile,
+                        path = virtualFile.path,
+                        byteSize = virtualFile.length,
                         resourceName = ioFile.nameWithoutExtension,
                         format = format,
                         densityQualifier = "",
@@ -200,60 +147,86 @@ class DrawableScanService(
                         sourceSet = "dropped"
                     )
 
-                    val target = normalizer.normalizeExternalFile(syntheticFile, project, similarityEngine)
+                    val target = pipeline.hashSingle(candidate)
                     if (target == null) {
-                        withContext(Dispatchers.EDT) { callback(DropScanResult.Error("Could not process file")) }
+                        deliver(callback, ExternalCheckResult.Error("Could not process file"))
                         return@withBackgroundProgress
                     }
 
-                    val cacheService = DrawableHashCacheService.getInstance(project)
-                    var candidates = cacheService.getAllCached()
+                    val cached = DrawableHashCacheService.getInstance(project).getAllCached()
+                    val candidates = cached.ifEmpty { pipeline.hashAll(pipeline.discover()) }
+                    val byPath = candidates.associateBy { it.file.path }
 
-                    if (candidates.isEmpty()) {
-                        // Cold cache — scan project drawables first
-                        val allFiles = readAction { scanner.findDrawableFiles(project, excludedDirs) }
-                        val enabledFormats = settings.state.enabledFormats()
-                        val files = allFiles.filter { it.format in enabledFormats }
-                        // normalizeAndHash runs image I/O outside readAction intentionally
-                        candidates = normalizer.normalizeAndHash(files, project, cacheService, similarityEngine)
-                    }
+                    val threshold = displayedThreshold()
+                    val matches = pipeline.compareToTarget(target, candidates)
+                        .filter { it.normalizedSimilarity >= threshold }
 
-                    val threshold = settings.state.similarityThreshold / 100.0
-                    val results = similarityEngine.findSimilarToTarget(target, candidates, threshold)
-
-                    withContext(Dispatchers.EDT) {
-                        callback(DropScanResult.Success(results, target.thumbnail))
-                    }
+                    deliver(
+                        callback,
+                        ExternalCheckResult.Completed(buildExternalCluster(target, matches, byPath), ioFile.name)
+                    )
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.error("Drop file scan failed", e)
-                withContext(Dispatchers.EDT) {
-                    callback(DropScanResult.Error(e.message ?: "Unknown error"))
-                }
+                log.error("External drawable check failed", e)
+                deliver(callback, ExternalCheckResult.Error(e.message ?: "Unknown error"))
             }
         }
         dropJob = job
         return job
     }
 
+    /**
+     * The candidate is always the canonical member: it is not part of the project, so it is
+     * never the copy to remove.
+     */
+    private fun buildExternalCluster(
+        target: HashedDrawable,
+        matches: List<SimilarityResult>,
+        candidatesByPath: Map<String, HashedDrawable>
+    ): DrawableCluster? {
+        if (matches.isEmpty()) return null
+
+        val members = matches.mapNotNull { candidatesByPath[it.fileB.path] }
+        if (members.isEmpty()) return null
+
+        val scores = matches.map { it.normalizedSimilarity }
+        return DrawableCluster(
+            members = listOf(target) + members,
+            canonical = target,
+            strongestSimilarity = scores.max(),
+            weakestSimilarity = scores.min(),
+            isExternal = true
+        )
+    }
+
+    private suspend fun deliver(callback: (ExternalCheckResult) -> Unit, result: ExternalCheckResult) {
+        withContext(Dispatchers.EDT) { callback(result) }
+    }
+
+    /** The similarity threshold currently being displayed, as a normalized fraction. */
+    fun displayedThreshold(): Double =
+        DrawableAnalyzerSettings.getInstance(project).state.similarityThreshold / 100.0
+
+    private fun countAtDisplayedThreshold(pairs: List<SimilarityResult>): Int {
+        val threshold = displayedThreshold()
+        return pairs.count { it.normalizedSimilarity >= threshold }
+    }
+
     private fun notifyScanComplete(count: Int) {
+        val group = NotificationGroupManager.getInstance().getNotificationGroup("Lacak Asset")
         val notification = if (count > 0) {
-            NotificationGroupManager.getInstance()
-                .getNotificationGroup("Lacak Asset")
-                .createNotification(
-                    "Drawable Analysis Complete",
-                    "$count similar drawable pairs found",
-                    NotificationType.WARNING
-                )
+            group.createNotification(
+                "Drawable Analysis Complete",
+                "$count similar drawable pairs found",
+                NotificationType.WARNING
+            )
         } else {
-            NotificationGroupManager.getInstance()
-                .getNotificationGroup("Lacak Asset")
-                .createNotification(
-                    "No similar drawables found in this project.",
-                    NotificationType.INFORMATION
-                )
+            group.createNotification(
+                "No similar drawables found in this project.",
+                NotificationType.INFORMATION
+            )
         }
         notification.notify(project)
     }

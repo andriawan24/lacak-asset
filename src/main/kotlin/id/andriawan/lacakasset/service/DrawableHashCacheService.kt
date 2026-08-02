@@ -11,10 +11,6 @@ class DrawableHashCacheService : Disposable {
 
     private val cache = ConcurrentHashMap<String, HashedDrawable>()
 
-    @Volatile
-    var hasChangedSinceLastScan = false
-        private set
-
     fun getCached(filePath: String): HashedDrawable? {
         return cache[filePath]
     }
@@ -25,14 +21,9 @@ class DrawableHashCacheService : Disposable {
 
     fun invalidate(filePath: String) {
         cache.remove(filePath)
-        hasChangedSinceLastScan = true
     }
 
     fun getAllCached(): List<HashedDrawable> = cache.values.toList()
-
-    fun clearChangedFlag() {
-        hasChangedSinceLastScan = false
-    }
 
     override fun dispose() {
         cache.clear()

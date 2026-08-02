@@ -1,18 +1,24 @@
 package id.andriawan.lacakasset.normalizer
 
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.project.Project
 import com.intellij.ui.Gray
 import com.intellij.ui.JBColor
 import id.andriawan.lacakasset.engine.SimilarityEngine
 import id.andriawan.lacakasset.model.DrawableFile
 import id.andriawan.lacakasset.model.DrawableFormat
 import id.andriawan.lacakasset.model.HashedDrawable
-import id.andriawan.lacakasset.service.DrawableHashCacheService
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
 
+/**
+ * Turns raw drawable bytes into a canonical image, a thumbnail, and the hashes derived
+ * from them.
+ *
+ * Holds a [SvgRenderer], whose underlying Batik transcoder is not documented as
+ * thread-safe, so one instance is created per worker rather than shared.
+ */
 class DrawableNormalizer {
 
     companion object {
@@ -22,100 +28,62 @@ class DrawableNormalizer {
     }
 
     private val svgRenderer = SvgRenderer()
-    private val colorResolver = ColorResourceResolver()
-    private val vectorConverter = AndroidVectorToSvgConverter(colorResolver)
+    private val vectorConverter = AndroidVectorToSvgConverter()
 
-    fun normalizeExternalFile(
+    /**
+     * Decodes [bytes], renders the canonical image and thumbnail, and computes the hashes.
+     * Returns null when the content cannot be decoded, or when an XML file turns out not to
+     * be a vector drawable (a layout or manifest, say).
+     *
+     * Performs no virtual file system access, so it is safe to call outside a read action
+     * and from multiple threads at once.
+     */
+    fun hash(
         file: DrawableFile,
-        project: Project,
+        bytes: ByteArray,
+        colors: Map<String, String>,
         similarityEngine: SimilarityEngine
     ): HashedDrawable? {
         return try {
-            // For ANDROID_VECTOR, reject non-vector XML (layouts, manifests, etc.)
-            if (file.format == DrawableFormat.ANDROID_VECTOR && !vectorConverter.isVectorDrawable(file.virtualFile)) {
-                return null
-            }
+            val path = file.path
 
-            val image = loadAsBufferedImage(file, project) ?: return null
+            var structuralFingerprint: String? = null
+            val image = when (file.format) {
+                DrawableFormat.PNG, DrawableFormat.JPG, DrawableFormat.WEBP -> {
+                    ImageIO.read(ByteArrayInputStream(bytes))
+                }
 
-            val structuralFingerprint = if (file.format == DrawableFormat.ANDROID_VECTOR) {
-                vectorConverter.extractStructuralFingerprint(file.virtualFile)
-            } else null
+                DrawableFormat.SVG -> {
+                    svgRenderer.renderSvg(ByteArrayInputStream(bytes), HASH_RENDER_SIZE, HASH_RENDER_SIZE)
+                }
+
+                DrawableFormat.ANDROID_VECTOR -> {
+                    val root = vectorConverter.parseVectorRoot(bytes, path) ?: return null
+                    structuralFingerprint = vectorConverter.fingerprint(root)
+                    val svg = vectorConverter.toSvg(root, colors)
+                    svgRenderer.renderSvgFromString(svg, HASH_RENDER_SIZE, HASH_RENDER_SIZE)
+                }
+            } ?: return null
 
             val normalized = normalizeImage(image)
             val thumbnail = createThumbnail(image)
 
-            val hashed = similarityEngine.computeHashes(file, normalized, thumbnail, structuralFingerprint)
+            val hashed = similarityEngine.computeHashes(
+                file = file,
+                normalizedImage = normalized,
+                thumbnail = thumbnail,
+                structuralFingerprint = structuralFingerprint,
+                sourceWidth = image.width,
+                sourceHeight = image.height
+            )
 
             image.flush()
             normalized.flush()
 
             hashed
         } catch (e: Exception) {
-            log.warn("Failed to normalize external file: ${file.virtualFile.path}", e)
+            log.warn("Failed to process drawable: ${file.path}", e)
             null
-        }
-    }
-
-    fun normalizeAndHash(
-        files: List<DrawableFile>,
-        project: Project,
-        cacheService: DrawableHashCacheService,
-        similarityEngine: SimilarityEngine
-    ): List<HashedDrawable> {
-        val results = mutableListOf<HashedDrawable>()
-
-        for (file in files) {
-            try {
-                // Check cache first
-                val cached = cacheService.getCached(file.virtualFile.path)
-                if (cached != null && cached.modificationStamp == file.virtualFile.modificationStamp) {
-                    results.add(cached.copy(file = file))
-                    continue
-                }
-
-                val thumbImage = loadAsBufferedImage(file, project) ?: continue
-
-                val structuralFingerprint = if (file.format == DrawableFormat.ANDROID_VECTOR) {
-                    vectorConverter.extractStructuralFingerprint(file.virtualFile)
-                } else null
-
-                val normalized = normalizeImage(thumbImage)
-                val thumbnail = createThumbnail(thumbImage)
-
-                val hashed = similarityEngine.computeHashes(file, normalized, thumbnail, structuralFingerprint)
-                cacheService.put(file.virtualFile.path, hashed)
-                results.add(hashed)
-
-                // Release image memory
-                thumbImage.flush()
-                normalized.flush()
-            } catch (e: Exception) {
-                log.warn("Failed to process drawable: ${file.virtualFile.path}", e)
-            }
-        }
-
-        return results
-    }
-
-    private fun loadAsBufferedImage(file: DrawableFile, project: Project): BufferedImage? {
-        return when (file.format) {
-            DrawableFormat.PNG, DrawableFormat.JPG, DrawableFormat.WEBP -> {
-                ImageIO.read(file.virtualFile.inputStream)
-            }
-
-            DrawableFormat.SVG -> {
-                svgRenderer.renderSvg(
-                    file.virtualFile.inputStream,
-                    HASH_RENDER_SIZE,
-                    HASH_RENDER_SIZE
-                )
-            }
-
-            DrawableFormat.ANDROID_VECTOR -> {
-                val svg = vectorConverter.convertToSvg(project, file.virtualFile) ?: return null
-                svgRenderer.renderSvgFromString(svg, HASH_RENDER_SIZE, HASH_RENDER_SIZE)
-            }
         }
     }
 

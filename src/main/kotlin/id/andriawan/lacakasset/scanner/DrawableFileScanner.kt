@@ -53,6 +53,8 @@ class DrawableFileScanner {
 
                 val drawableFile = DrawableFile(
                     virtualFile = file,
+                    path = file.path,
+                    byteSize = file.length,
                     resourceName = extractResourceName(file),
                     format = format,
                     densityQualifier = extractDensityQualifier(file),
@@ -68,9 +70,6 @@ class DrawableFileScanner {
 
         return drawableFiles
     }
-
-    private fun isInDrawableDirectory(file: VirtualFile): Boolean =
-        Companion.isInDrawableDirectory(file)
 
     private fun detectResourceOrigin(file: VirtualFile): ResourceOrigin {
         val grandparent = file.parent?.parent ?: return ResourceOrigin.ANDROID_RES

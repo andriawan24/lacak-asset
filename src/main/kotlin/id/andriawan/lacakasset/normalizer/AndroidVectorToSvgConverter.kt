@@ -1,9 +1,8 @@
 package id.andriawan.lacakasset.normalizer
 
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
 import org.w3c.dom.Element
+import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -15,8 +14,12 @@ import javax.xml.parsers.DocumentBuilderFactory
  * shapes visible (aapt-filled paths fall back to black), and are compared via
  * a structural fingerprint (SHA-256 of pathData + attributes) rather than
  * perceptual hashing.
+ *
+ * Operates on raw bytes and a pre-resolved colour map so it can run outside a
+ * read action: the caller reads file contents and loads project colours while
+ * holding the lock, then converts without it.
  */
-class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolver) {
+class AndroidVectorToSvgConverter {
 
     companion object {
         private const val ANDROID_NS = "http://schemas.android.com/apk/res/android"
@@ -46,44 +49,39 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
         )
     }
 
-    /** Returns true if the XML root tag is `<vector>` (i.e. a valid Android vector drawable). */
-    fun isVectorDrawable(file: VirtualFile): Boolean {
+    /**
+     * Parses the XML and returns its root element only when that root is `<vector>`.
+     * Layouts, manifests, and any other XML therefore yield null.
+     *
+     * Parsing once and reusing the root avoids re-reading the same file for the SVG
+     * conversion and the structural fingerprint.
+     */
+    fun parseVectorRoot(bytes: ByteArray, path: String): Element? {
         return try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.isNamespaceAware = true
-            val root = factory.newDocumentBuilder().parse(file.inputStream).documentElement
-            (root.localName ?: root.tagName) == "vector"
+            val root = factory.newDocumentBuilder()
+                .parse(ByteArrayInputStream(bytes))
+                .documentElement
+            if ((root.localName ?: root.tagName) == "vector") root else null
         } catch (e: Exception) {
-            false
-        }
-    }
-
-    /** Returns true if the vector uses the aapt: namespace (inline gradients etc.). */
-    fun isAaptVector(file: VirtualFile): Boolean {
-        return try {
-            val factory = DocumentBuilderFactory.newInstance()
-            factory.isNamespaceAware = true
-            val root = factory.newDocumentBuilder().parse(file.inputStream).documentElement
-            root.lookupNamespaceURI("aapt") != null
-        } catch (e: Exception) {
-            false
+            log.warn("Failed to parse vector drawable: $path", e)
+            null
         }
     }
 
     /**
-     * Converts the vector to an SVG string for rendering.
-     * Returns null if the file is not a valid Android vector drawable.
+     * Converts a parsed vector root to an SVG string for rendering.
      * For aapt vectors, paths whose fill is defined via aapt:attr are rendered as black
      * so the shape is still visible for thumbnail display.
      */
-    fun convertToSvg(project: Project, file: VirtualFile): String? {
-        val root = parseVectorRoot(file) ?: return null
+    fun toSvg(root: Element, colors: Map<String, String>): String {
         val vpWidth = getAttr(root, "viewportWidth")?.toFloatOrNull() ?: 24f
         val vpHeight = getAttr(root, "viewportHeight")?.toFloatOrNull() ?: 24f
 
         return buildString {
             append("""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $vpWidth $vpHeight">""")
-            appendChildren(project, root)
+            appendChildren(colors, root)
             append("</svg>")
         }
     }
@@ -93,26 +91,16 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
      * key attributes. Used for comparing aapt vectors by code structure instead
      * of perceptual image similarity.
      */
-    fun extractStructuralFingerprint(file: VirtualFile): String? {
-        return try {
-            val factory = DocumentBuilderFactory.newInstance()
-            factory.isNamespaceAware = true
-            val root = factory.newDocumentBuilder().parse(file.inputStream).documentElement
-            if ((root.localName ?: root.tagName) != "vector") return null
+    fun fingerprint(root: Element): String {
+        val sb = StringBuilder()
+        sb.append(getAttr(root, "viewportWidth") ?: "24")
+        sb.append("x")
+        sb.append(getAttr(root, "viewportHeight") ?: "24")
+        collectStructure(root, sb)
 
-            val sb = StringBuilder()
-            sb.append(getAttr(root, "viewportWidth") ?: "24")
-            sb.append("x")
-            sb.append(getAttr(root, "viewportHeight") ?: "24")
-            collectStructure(root, sb)
-
-            MessageDigest.getInstance("SHA-256")
-                .digest(sb.toString().toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
-        } catch (e: Exception) {
-            log.warn("Failed to extract structural fingerprint: ${file.path}", e)
-            null
-        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(sb.toString().toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
     }
 
     private fun collectStructure(parent: Element, sb: StringBuilder) {
@@ -144,32 +132,19 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
         }
     }
 
-    private fun parseVectorRoot(file: VirtualFile): Element? {
-        return try {
-            val factory = DocumentBuilderFactory.newInstance()
-            factory.isNamespaceAware = true
-            val root = factory.newDocumentBuilder().parse(file.inputStream).documentElement
-            val rootName = root.localName ?: root.tagName
-            if (rootName == "vector") root else null
-        } catch (e: Exception) {
-            log.warn("Failed to parse vector drawable: ${file.path}", e)
-            null
-        }
-    }
-
-    private fun StringBuilder.appendChildren(project: Project, parent: Element) {
+    private fun StringBuilder.appendChildren(colors: Map<String, String>, parent: Element) {
         val children = parent.childNodes
         for (i in 0 until children.length) {
             val node = children.item(i)
             if (node !is Element) continue
             when (node.localName ?: node.tagName) {
-                "path" -> appendPath(project, node)
-                "group" -> appendGroup(project, node)
+                "path" -> appendPath(colors, node)
+                "group" -> appendGroup(colors, node)
             }
         }
     }
 
-    private fun StringBuilder.appendPath(project: Project, element: Element) {
+    private fun StringBuilder.appendPath(colors: Map<String, String>, element: Element) {
         val pathData = getAttr(element, "pathData") ?: return
         val fillAlpha = getAttr(element, "fillAlpha")?.toFloatOrNull() ?: 1f
         val strokeAlpha = getAttr(element, "strokeAlpha")?.toFloatOrNull() ?: 1f
@@ -178,10 +153,10 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
 
         // Resolve fill: use declared fillColor, or fall back to black if the fill is
         // defined via aapt:attr (inline gradient) so the shape remains visible.
-        val fillColorStr = resolveColor(project, getAttr(element, "fillColor"))
+        val fillColorStr = resolveColor(colors, getAttr(element, "fillColor"))
             ?: if (hasAaptChild(element)) "#000000" else null
 
-        val strokeColorStr = resolveColor(project, getAttr(element, "strokeColor"))
+        val strokeColorStr = resolveColor(colors, getAttr(element, "strokeColor"))
 
         append("""<path d="${escapeXml(pathData)}" """)
 
@@ -209,7 +184,7 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
         append("/>")
     }
 
-    private fun StringBuilder.appendGroup(project: Project, element: Element) {
+    private fun StringBuilder.appendGroup(colors: Map<String, String>, element: Element) {
         val translateX = getAttr(element, "translateX")?.toFloatOrNull() ?: 0f
         val translateY = getAttr(element, "translateY")?.toFloatOrNull() ?: 0f
         val rotation = getAttr(element, "rotation")?.toFloatOrNull() ?: 0f
@@ -231,7 +206,7 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
         }.trim()
 
         if (transform.isEmpty()) append("<g>") else append("""<g transform="$transform">""")
-        appendChildren(project, element)
+        appendChildren(colors, element)
         append("</g>")
     }
 
@@ -245,10 +220,10 @@ class AndroidVectorToSvgConverter(private val colorResolver: ColorResourceResolv
         return false
     }
 
-    private fun resolveColor(project: Project, color: String?): String? {
+    private fun resolveColor(colors: Map<String, String>, color: String?): String? {
         if (color == null) return null
         if (color.startsWith("#")) return color
-        if (color.startsWith("@color/")) return colorResolver.resolve(project, color)
+        if (color.startsWith("@color/")) return colors[color.removePrefix("@color/")] ?: "#000000"
         if (color.startsWith("@android:color/")) return ANDROID_COLORS[color] ?: "#000000"
         if (color.startsWith("?")) return "#000000"
         return null

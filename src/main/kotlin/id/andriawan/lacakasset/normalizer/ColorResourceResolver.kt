@@ -7,38 +7,36 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileVisitor
 import javax.xml.parsers.DocumentBuilderFactory
 
+/**
+ * Collects `@color/...` definitions declared in the project's `values/colors.xml` files.
+ *
+ * Loading walks the virtual file system, so it runs once inside a read action before
+ * hashing begins. The resulting map is then read without any lock by the vector
+ * converter running on worker threads.
+ */
 class ColorResourceResolver {
 
-    private val colorCache = mutableMapOf<String, String>()
+    /** Walks the project and returns colour name to hex value, e.g. `brand_primary` to `#FF0000`. */
+    fun loadColors(project: Project): Map<String, String> {
+        val baseDir = project.guessProjectDir() ?: return emptyMap()
+        val colors = mutableMapOf<String, String>()
 
-    fun resolve(project: Project, colorRef: String): String {
-        if (!colorRef.startsWith("@color/")) return colorRef
-        if (colorRef.startsWith("#")) return colorRef
-        val colorName = colorRef.removePrefix("@color/")
-        colorCache[colorName]?.let { return it }
-        loadColorsFromProject(project)
-
-        return colorCache[colorName] ?: "#000000"
-    }
-
-    private fun loadColorsFromProject(project: Project) {
-        if (colorCache.isNotEmpty()) return
-
-        val baseDir = project.guessProjectDir() ?: return
         VfsUtilCore.visitChildrenRecursively(baseDir, object : VirtualFileVisitor<Unit>() {
             override fun visitFile(file: VirtualFile): Boolean {
                 if (file.isDirectory) {
                     return file.name != "build" && !file.name.startsWith(".")
                 }
                 if (file.name == "colors.xml" && file.parent?.name == "values") {
-                    parseColorsXml(file)
+                    parseColorsXml(file, colors)
                 }
                 return true
             }
         })
+
+        return colors
     }
 
-    private fun parseColorsXml(file: VirtualFile) {
+    private fun parseColorsXml(file: VirtualFile, into: MutableMap<String, String>) {
         try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.isNamespaceAware = false
@@ -49,12 +47,11 @@ class ColorResourceResolver {
                 val name = element.attributes.getNamedItem("name")?.nodeValue ?: continue
                 val value = element.textContent?.trim() ?: continue
                 if (value.startsWith("#")) {
-                    colorCache[name] = value
+                    into[name] = value
                 }
             }
         } catch (_: Exception) {
             // Silently skip unparseable colors.xml files
         }
     }
-
 }

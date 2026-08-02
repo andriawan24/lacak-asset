@@ -5,9 +5,10 @@
     <idea-version since-build="242"/>
 
     <description><![CDATA[
-        Detect similar and duplicate drawable resources in Android projects.
+        Detect and clean up duplicate drawable resources in Android projects.
         Compares images across formats (PNG, JPG, WebP, SVG, Android XML vector)
-        using perceptual hashing to find duplicates with a configurable similarity threshold.
+        using perceptual hashing, groups every copy of an asset into a single row,
+        and deletes the redundant copies through the IDE's Safe Delete refactoring.
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -44,7 +45,7 @@
 
             <action id="LacakAsset.CompareAsset"
                     class="id.andriawan.lacakasset.action.CompareAssetAction"
-                    text="Check Similar Drawable"
+                    text="Check External Drawable..."
                     icon="AllIcons.Actions.Diff"/>
         </group>
 

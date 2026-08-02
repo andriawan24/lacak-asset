@@ -1,5 +1,6 @@
 package id.andriawan.lacakasset.engine
 
+import com.intellij.openapi.diagnostic.Logger
 import id.andriawan.lacakasset.model.DrawableFile
 import id.andriawan.lacakasset.model.HashedDrawable
 import id.andriawan.lacakasset.model.SimilarityResult
@@ -9,6 +10,17 @@ class SimilarityEngine {
 
     companion object {
         private const val DHASH_PRE_FILTER_THRESHOLD = 0.80
+
+        /**
+         * Pairs are retained down to this score regardless of the user's threshold, so the
+         * displayed threshold can be lowered without recomparing. Comparison cost is
+         * unchanged: every pair is examined either way, only retention differs.
+         */
+        const val RETENTION_FLOOR = 0.70
+
+        /** Bounds memory on projects with pathologically many near-identical assets. */
+        const val RETENTION_CAP = 50_000
+
         private val DENSITY_PRIORITY = mapOf(
             "" to 0,
             "xxxhdpi" to 1,
@@ -18,13 +30,17 @@ class SimilarityEngine {
             "mdpi" to 5,
             "ldpi" to 6
         )
+
+        private val log = Logger.getInstance(SimilarityEngine::class.java)
     }
 
     fun computeHashes(
         file: DrawableFile,
         normalizedImage: BufferedImage,
         thumbnail: BufferedImage,
-        structuralFingerprint: String? = null
+        structuralFingerprint: String? = null,
+        sourceWidth: Int = 0,
+        sourceHeight: Int = 0
     ): HashedDrawable {
         return HashedDrawable(
             file = file,
@@ -32,51 +48,61 @@ class SimilarityEngine {
             pHash = PHash.compute(normalizedImage),
             thumbnail = thumbnail,
             modificationStamp = file.virtualFile.modificationStamp,
-            structuralFingerprint = structuralFingerprint
+            structuralFingerprint = structuralFingerprint,
+            sourceWidth = sourceWidth,
+            sourceHeight = sourceHeight
         )
     }
 
-    fun findSimilarPairs(
-        hashedDrawables: List<HashedDrawable>,
-        threshold: Double
-    ): List<SimilarityResult> {
+    /**
+     * Compares every unordered pair exactly once and returns those at or above the
+     * retention floor, ordered by descending similarity.
+     */
+    fun findRetainedPairs(hashedDrawables: List<HashedDrawable>): List<SimilarityResult> {
         val deduplicated = deduplicateDensityVariants(hashedDrawables)
         val results = mutableListOf<SimilarityResult>()
 
         for (i in deduplicated.indices) {
             for (j in i + 1 until deduplicated.size) {
-                val a = deduplicated[i]
-                val b = deduplicated[j]
-
-                val result = computeSimilarity(a, b, threshold)
-
-                if (result != null) results.add(result)
+                computeSimilarity(deduplicated[i], deduplicated[j])?.let { results.add(it) }
             }
         }
 
-        return results.sortedByDescending { it.normalizedSimilarity }
+        return capped(results)
     }
 
-    fun findSimilarToTarget(
+    /**
+     * Compares [target] against each candidate, excluding the target's own file, and
+     * returns those at or above the retention floor, ordered by descending similarity.
+     */
+    fun findRetainedPairsForTarget(
         target: HashedDrawable,
-        candidates: List<HashedDrawable>,
-        threshold: Double
+        candidates: List<HashedDrawable>
     ): List<SimilarityResult> {
         val deduplicated = deduplicateDensityVariants(candidates)
         val results = mutableListOf<SimilarityResult>()
 
         for (candidate in deduplicated) {
-            if (candidate.file.virtualFile.path == target.file.virtualFile.path) continue
-
-            val result = computeSimilarity(target, candidate, threshold)
-
-            if (result != null) results.add(result)
+            if (candidate.file.path == target.file.path) continue
+            computeSimilarity(target, candidate)?.let { results.add(it) }
         }
 
-        return results.sortedByDescending { it.normalizedSimilarity }
+        return capped(results)
     }
 
-    private fun computeSimilarity(a: HashedDrawable, b: HashedDrawable, threshold: Double): SimilarityResult? {
+    /**
+     * Keeps the highest-scoring pairs when the cap is exceeded, and records the loss —
+     * silently truncating would present a partial result as a complete one.
+     */
+    private fun capped(results: MutableList<SimilarityResult>): List<SimilarityResult> {
+        val sorted = results.sortedByDescending { it.normalizedSimilarity }
+        if (sorted.size <= RETENTION_CAP) return sorted
+
+        log.warn("Retained pairs capped at $RETENTION_CAP; dropped ${sorted.size - RETENTION_CAP} lower-scoring pairs")
+        return sorted.take(RETENTION_CAP)
+    }
+
+    private fun computeSimilarity(a: HashedDrawable, b: HashedDrawable): SimilarityResult? {
         // Exact structural match (same paths, same attributes) → 100%
         if (a.structuralFingerprint != null && b.structuralFingerprint != null &&
             a.structuralFingerprint == b.structuralFingerprint
@@ -94,7 +120,7 @@ class SimilarityEngine {
         if (dSimilarity < DHASH_PRE_FILTER_THRESHOLD) return null
 
         val pSimilarity = a.pHash.normalizedSimilarity(b.pHash)
-        if (pSimilarity < threshold) return null
+        if (pSimilarity < RETENTION_FLOOR) return null
 
         return SimilarityResult(
             fileA = a.file,

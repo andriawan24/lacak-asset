@@ -19,7 +19,6 @@ class DrawableAnalyzerSettings : SimplePersistentStateComponent<DrawableAnalyzer
         var includeWebp by property(true)
         var includeSvg by property(true)
         var includeAndroidVector by property(true)
-        var showOutdatedBanner by property(true)
 
         fun enabledFormats(): Set<DrawableFormat> = buildSet {
             if (includePng) add(DrawableFormat.PNG)
@@ -28,6 +27,13 @@ class DrawableAnalyzerSettings : SimplePersistentStateComponent<DrawableAnalyzer
             if (includeSvg) add(DrawableFormat.SVG)
             if (includeAndroidVector) add(DrawableFormat.ANDROID_VECTOR)
         }
+
+        /** Directory names to skip, parsed from the comma-separated user entry. */
+        fun excludedDirectorySet(): Set<String> = (excludedDirectories ?: "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .toSet()
     }
 
     companion object {

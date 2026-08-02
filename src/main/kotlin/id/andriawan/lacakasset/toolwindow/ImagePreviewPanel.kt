@@ -47,6 +47,11 @@ class ImagePreviewPanel : JPanel(BorderLayout()) {
 
     fun clearPreview() = setPreview(null, "")
 
+    /** Member cards label the drawable themselves, so their previews hide the caption. */
+    fun showCaption(visible: Boolean) {
+        nameLabel.isVisible = visible
+    }
+
     private class ImageCanvas : JPanel() {
         var image: BufferedImage? = null
             set(value) {
