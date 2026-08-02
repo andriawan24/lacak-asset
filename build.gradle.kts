@@ -22,6 +22,7 @@ dependencies {
     implementation(libs.batik.codec) {
         exclude(group = "xml-apis", module = "xml-apis")
     }
+    testImplementation(libs.junit)
     intellijPlatform {
         intellijIdea(libs.versions.intellijIdea)
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)

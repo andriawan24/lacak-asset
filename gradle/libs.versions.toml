@@ -5,11 +5,13 @@ intellijIdea = "2025.2.4"
 imageioWebp = "3.12.0"
 batikTranscoder = "1.19"
 batikCodec = "1.19"
+junit = "4.13.2"
 
 [libraries]
 imageio-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version.ref = "imageioWebp" }
 batik-transcoder = { module = "org.apache.xmlgraphics:batik-transcoder", version.ref = "batikTranscoder" }
 batik-codec = { module = "org.apache.xmlgraphics:batik-codec", version.ref = "batikCodec" }
+junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
