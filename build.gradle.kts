@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "id.andriawan"
-version = "1.1.0"
+version = "1.1.1"
 
 repositories {
     mavenCentral()
@@ -37,14 +37,16 @@ intellijPlatform {
         }
 
         changeNotes = """
-            1.1.0
-            - Results are grouped: every copy of an asset is one row instead of one row per pair
-            - Delete redundant copies from the tool window via the IDE's Safe Delete refactoring
-            - Rebuilt tool window as a group list with per-copy previews and actions
-            - Live similarity slider plus module and format filters, with no rescan
-            - External file checks now open in the tool window instead of a separate dialog
-            - Results survive closing and reopening the tool window
-            - Image decoding no longer holds the read lock, and now runs in parallel
+            <b>1.1.1</b>
+            <ul>
+                <li>Results are grouped: every copy of an asset is one row instead of one row per pair</li>
+                <li>Delete redundant copies from the tool window via the IDE's Safe Delete refactoring</li>
+                <li>Rebuilt tool window as a group list with per-copy previews and actions</li>
+                <li>Live similarity slider plus module and format filters, with no rescan</li>
+                <li>External file checks now open in the tool window instead of a separate dialog</li>
+                <li>Results survive closing and reopening the tool window</li>
+                <li>Image decoding no longer holds the read lock, and now runs in parallel</li>
+            </ul>
         """.trimIndent()
     }
 }
